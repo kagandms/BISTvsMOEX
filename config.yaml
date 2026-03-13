@@ -1,0 +1,127 @@
+# The Eurasian Bridge - Configuration File
+# ==========================================
+
+# Application settings
+app:
+  title: "The Eurasian Bridge | BIST vs MOEX"
+  icon: "🌉"
+  layout: "wide"
+  sidebar_state: "expanded"
+
+# Cache settings
+cache:
+  ttl_seconds: 3600  # 1 hour
+
+# API settings
+api:
+  finam:
+    base_url: "https://export.finam.ru"
+    timeout_seconds: 15
+    max_retries: 3
+    retry_delay_seconds: 1
+  yfinance:
+    min_data_points: 5
+
+# Data settings
+data:
+  min_data_points: 5
+  min_correlation_points: 10
+  default_lookback_days: 365
+  moex_delay_days: 2  # MOEX data typically has 1-2 day delay
+  fallback_lookback_days: 30  # Days to look back if no data in requested range
+
+# Sector pairs - centralized data management
+# RU tickers include Finam emitent IDs (em) for data fetching
+sectors:
+  aviation:
+    TR: "THYAO.IS"
+    RU: "AFLT"
+    RU_EM: 29
+    icon: "✈️"
+  energy:
+    TR: "TUPRS.IS"
+    RU: "LKOH"
+    RU_EM: 8
+    icon: "🛢️"
+  banking:
+    TR: "AKBNK.IS"
+    RU: "SBER"
+    RU_EM: 3
+    icon: "🏦"
+  retail:
+    TR: "BIMAS.IS"
+    RU: "MGNT"
+    RU_EM: 17086
+    icon: "🛒"
+  steel:
+    TR: "EREGL.IS"
+    RU: "NLMK"
+    RU_EM: 17046
+    icon: "🏗️"
+
+# Market Capitalization Fallbacks (Billions USD)
+# Used if live API data is unavailable (especially for MOEX)
+# Updated: Feb 2026
+market_cap_metadata:
+  as_of: "2026-02-01"
+
+market_caps:
+  THYAO.IS: 14.5
+  AFLT: 2.1
+  TUPRS.IS: 6.8
+  LKOH: 45.2
+  AKBNK.IS: 5.9
+  SBER: 72.4
+  BIMAS.IS: 8.2
+  MGNT: 6.5
+  EREGL.IS: 4.1
+  NLMK: 9.8
+
+# Color palette - Institutional Finance theme
+colors:
+  primary: "#722F37"       # Deep Burgundy
+  secondary: "#5A6978"     # Slate Grey
+  tr_line: "#C41E3A"       # Turkish Red
+  ru_line: "#5A6978"       # Russian Grey/Blue
+  background: "#FFFFFF"    # White
+  card_bg: "#F8F9FA"       # Light Grey
+  text_dark: "#1A1A1A"     # Near Black
+  text_muted: "#6C757D"    # Muted Grey
+  success: "#28A745"       # Green
+  danger: "#DC3545"        # Red
+
+# Macro economic events - displayed on charts as vertical lines
+# Format: date (YYYY-MM-DD), title (multilingual), type (interest_rate, inflation, crisis, other)
+macro_events:
+  # 2023 events
+  - date: "2023-03-19"
+    title_en: "Turkey Interest Rate Cut"
+    title_tr: "Türkiye Faiz İndirimi"
+    title_ru: "Снижение процентной ставки Турции"
+    type: "interest_rate"
+  - date: "2023-06-22"
+    title_en: "Turkey Interest Rate Hike"
+    title_tr: "Türkiye Faiz Artırımı"
+    title_ru: "Повышение процентной ставки Турции"
+    type: "interest_rate"
+  - date: "2023-08-24"
+    title_en: "Turkey Interest Rate Hike to 25%"
+    title_tr: "Türkiye Faiz Artırımı %25"
+    title_ru: "Повышение ставки до 25%"
+    type: "interest_rate"
+  # 2024 events
+  - date: "2024-01-25"
+    title_en: "Turkey Interest Rate to 45%"
+    title_tr: "Türkiye Faiz %45"
+    title_ru: "Ставка Турции 45%"
+    type: "interest_rate"
+  - date: "2024-03-21"
+    title_en: "Russia Interest Rate to 16%"
+    title_tr: "Rusya Faiz %16"
+    title_ru: "Ставка России 16%"
+    type: "interest_rate"
+  - date: "2024-07-26"
+    title_en: "Russia Interest Rate to 18%"
+    title_tr: "Rusya Faiz %18"
+    title_ru: "Ставка России 18%"
+    type: "interest_rate"
