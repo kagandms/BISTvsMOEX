@@ -11,11 +11,12 @@ app:
 # Cache settings
 cache:
   ttl_seconds: 3600  # 1 hour
+  max_entries: 50
 
 # API settings
 api:
-  finam:
-    base_url: "https://export.finam.ru"
+  moex_iss:
+    base_url: "https://iss.moex.com"
     timeout_seconds: 15
     max_retries: 3
     retry_delay_seconds: 1
@@ -28,35 +29,31 @@ data:
   min_correlation_points: 10
   default_lookback_days: 365
   moex_delay_days: 2  # MOEX data typically has 1-2 day delay
+  ytd_baseline_grace_days: 7
   fallback_lookback_days: 30  # Days to look back if no data in requested range
 
 # Sector pairs - centralized data management
-# RU tickers include Finam emitent IDs (em) for data fetching
+# RU tickers are MOEX board symbols used by the ISS API
 sectors:
   aviation:
     TR: "THYAO.IS"
     RU: "AFLT"
-    RU_EM: 29
     icon: "✈️"
   energy:
     TR: "TUPRS.IS"
     RU: "LKOH"
-    RU_EM: 8
     icon: "🛢️"
   banking:
     TR: "AKBNK.IS"
     RU: "SBER"
-    RU_EM: 3
     icon: "🏦"
   retail:
     TR: "BIMAS.IS"
     RU: "MGNT"
-    RU_EM: 17086
     icon: "🛒"
   steel:
     TR: "EREGL.IS"
     RU: "NLMK"
-    RU_EM: 17046
     icon: "🏗️"
 
 # Market Capitalization Fallbacks (Billions USD)

@@ -1,85 +1,89 @@
+"""
+Async data-fetching tests.
+"""
+
+from __future__ import annotations
 
 import unittest
+from datetime import date
+from decimal import Decimal
+from unittest.mock import patch
+
 import pandas as pd
-from datetime import datetime
-from unittest.mock import MagicMock, patch, AsyncMock
-from src.data import fetch_finam_data_async
 
-class TestAsyncDataByFinam(unittest.IsolatedAsyncioTestCase):
-    async def test_fetch_finam_async_success(self):
-        """Test successful async fetch from Finam."""
-        ticker = "SBER"
-        start = datetime(2024, 1, 1)
-        end = datetime(2024, 1, 10)
-        
-        # Mock aiohttp ClientSession
-        with patch('aiohttp.ClientSession') as MockSession:
-            session = MockSession.return_value
-            session.__aenter__.return_value = session
-            session.__aexit__.return_value = None
-            
-            # Mock get response
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.text.return_value = """<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>
-SBER,D,20240101,000000,100,105,95,102,1000
-SBER,D,20240102,000000,102,108,100,105,1200
-SBER,D,20240103,000000,105,110,104,108,1300
-SBER,D,20240104,000000,108,112,106,110,1400
-SBER,D,20240105,000000,110,115,109,112,1500
-"""
-            session.get.return_value.__aenter__.return_value = mock_response
-            
-            # We also need to mock _get_em_for_ticker or ensure SBER is in SECTORS (it is)
-            # But let's patch it just in case config is separate
-            with patch('src.data._get_em_for_ticker', return_value=3):
-                result = await fetch_finam_data_async(ticker, start, end)
-                
-                self.assertTrue(result['success'])
-                self.assertIsNotNone(result['df'])
-                self.assertEqual(len(result['df']), 5)
-                self.assertTrue('Close' in result['df'].columns)
+from src.models import FxRateWindow, build_date_range, success_result
 
-    async def test_fetch_finam_async_timeout(self):
-        """Test timeout handling in async fetch."""
-        ticker = "SBER"
-        start = datetime(2024, 1, 1)
-        end = datetime(2024, 1, 10)
-        
-        with patch('aiohttp.ClientSession') as MockSession:
-            session = MockSession.return_value
-            session.__aenter__.return_value = session
-            session.__aexit__.return_value = None
-            
-            # Simulate generic exception that leads us to check for timeout manually in loop
-            # Or better, asyncio.TimeoutError raised by session.get
-            import asyncio
-            session.get.side_effect = asyncio.TimeoutError()
-            
-            with patch('src.data._get_em_for_ticker', return_value=3):
-                # We need to speed up retries for test, but keep base_url
-                new_finam_config = {
-                    'base_url': 'http://test',
-                    'timeout_seconds': 0.1,
-                    'max_retries': 2,
-                    'retry_delay_seconds': 0.01
-                }
-                with patch.dict('src.data.API_CONFIG', {'finam': new_finam_config}):
-                    # Mock response to raise TimeoutError
-                    # Note: aiohttp.ClientSession.get returns a context manager
-                    # When we await session.get(), it enters __aenter__
-                    # raises asyncio.TimeoutError
-                    
-                    # We need to mock the session.get to raise TimeoutError when awaited or entered
-                    # session.get(...) is a context manager.
-                    
-                    # More robust mock for aiohttp client
-                    mock_get_ctx = MagicMock()
-                    mock_get_ctx.__aenter__.side_effect = asyncio.TimeoutError()
-                    session.get.return_value = mock_get_ctx
 
-                    result = await fetch_finam_data_async(ticker, start, end)
-                    
-                    self.assertFalse(result['success'])
-                    self.assertEqual(result['error'], 'timeout')
+class TestAsyncData(unittest.IsolatedAsyncioTestCase):
+    """Tests for async wrappers in the data module."""
 
+    async def test_fetch_stock_data_async_passthrough(self) -> None:
+        from src.data import fetch_stock_data_async
+
+        expected = success_result(
+            pd.Series([100.0], index=pd.to_datetime(["2025-01-10"])),
+            build_date_range(date(2025, 1, 1), date(2025, 1, 31)),
+            build_date_range(date(2025, 1, 10), date(2025, 1, 10)),
+        )
+
+        with patch("src.data.fetch_stock_data", return_value=expected) as mock_fetch:
+            result = await fetch_stock_data_async("SBER", date(2025, 1, 1), date(2025, 1, 31), is_russian=True)
+
+        mock_fetch.assert_called_once_with("SBER", date(2025, 1, 1), date(2025, 1, 31), True)
+        assert result is expected
+
+    async def test_fetch_usd_rates_async_passthrough(self) -> None:
+        from src.data import fetch_usd_rates_async
+
+        expected = success_result(
+            FxRateWindow(
+                usd_try=pd.DataFrame({"USD_TRY": [35.0]}, index=pd.to_datetime(["2025-01-10"])),
+                usd_rub=pd.DataFrame({"USD_RUB": [92.0]}, index=pd.to_datetime(["2025-01-10"])),
+            ),
+            build_date_range(date(2025, 1, 1), date(2025, 1, 31)),
+            build_date_range(date(2025, 1, 1), date(2025, 1, 31)),
+        )
+
+        with patch("src.data.fetch_usd_rates", return_value=expected) as mock_fetch:
+            result = await fetch_usd_rates_async(date(2025, 1, 1), date(2025, 1, 31))
+
+        mock_fetch.assert_called_once_with(date(2025, 1, 1), date(2025, 1, 31))
+        assert result is expected
+
+    async def test_fetch_ytd_start_price_uses_selected_end_year(self) -> None:
+        from src.data import fetch_ytd_start_price
+
+        expected = success_result(
+            pd.Series(
+                [120.0, 121.0, 122.0, 123.0, 124.0],
+                index=pd.date_range("2024-01-02", periods=5),
+            ),
+            build_date_range(date(2024, 1, 1), date(2024, 1, 31)),
+            build_date_range(date(2024, 1, 2), date(2024, 1, 6)),
+        )
+
+        with patch("src.data.fetch_stock_data_async", return_value=expected) as mock_fetch:
+            result = await fetch_ytd_start_price("THYAO.IS", date(2024, 8, 15), is_russian=False)
+
+        mock_fetch.assert_called_once_with("THYAO.IS", date(2024, 1, 1), date(2024, 1, 31), False)
+        assert result.is_success
+        assert result.payload == Decimal("120.0")
+
+    async def test_fetch_ytd_start_price_flags_late_baseline_as_incomplete(self) -> None:
+        from src.data import fetch_ytd_start_price
+
+        expected = success_result(
+            pd.Series(
+                [120.0, 121.0, 122.0, 123.0, 124.0],
+                index=pd.date_range("2024-01-15", periods=5),
+            ),
+            build_date_range(date(2024, 1, 1), date(2024, 1, 31)),
+            build_date_range(date(2024, 1, 15), date(2024, 1, 19)),
+        )
+
+        with patch("src.data.fetch_stock_data_async", return_value=expected):
+            result = await fetch_ytd_start_price("THYAO.IS", date(2024, 8, 15), is_russian=False)
+
+        assert result.is_success
+        assert result.payload == Decimal("120.0")
+        assert not result.is_complete

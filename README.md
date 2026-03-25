@@ -1,86 +1,43 @@
 # 🌉 The Eurasian Bridge: BIST vs. MOEX Analyzer
 
-**A multilingual financial analytics project built to compare sector leaders in Turkey and Russia through one reproducible interface.**
+Multilingual comparative analytics dashboard for sector leaders in Turkey and Russia.
 
-This project was designed as a portfolio piece at the intersection of Management Information Systems and Economics. Its purpose is not to predict prices or simulate trading, but to demonstrate the ability to:
+This application compares BIST and MOEX equities through a single Streamlit interface, normalizes cross-market data, and presents return/risk metrics in English, Turkish, and Russian.
 
-- combine heterogeneous financial data sources,
-- normalize cross-market comparisons,
-- present results in a clear decision-oriented dashboard,
-- and communicate findings across English, Turkish, and Russian.
+## What The Application Does
 
-## Project Thesis
+- fetches BIST prices from Yahoo Finance,
+- fetches MOEX prices from the official MOEX ISS API,
+- optionally converts both assets into USD,
+- computes period change, YTD, volatility, Sharpe, drawdown, CAGR, and correlation,
+- renders a fail-closed dashboard that hides unsafe comparisons instead of showing misleading numbers.
 
-How can sector leaders from Borsa Istanbul and the Moscow Exchange be compared fairly when they trade in different currencies, under different market calendars, and under different macroeconomic conditions?
-
-The application answers that question through a compact analytics workflow:
-
-- fetch daily close data from separate upstream providers,
-- normalize series to a common base,
-- compute cross-market risk and return metrics,
-- annotate analysis with macro events,
-- and present the results in a multilingual dashboard.
-
-## What The Application Demonstrates
-
-- **Cross-market financial analysis** between BIST and MOEX sector leaders.
-- **Asynchronous data ingestion** for a responsive dashboard experience.
-- **Precision-safe calculations** using `decimal.Decimal` where pricing precision matters.
-- **Resilience against upstream issues** through error handling, retries, and fallback behavior.
-- **Presentation discipline** through multilingual UX and explicit methodology notes.
-
-## Covered Sector Pairs
-
-| Sector | 🇹🇷 BIST | 🇷🇺 MOEX |
-|--------|---------|---------|
-| Aviation | THYAO | AFLT |
-| Energy | TUPRS | LKOH |
-| Banking | AKBNK | SBER |
-| Retail | BIMAS | MGNT |
-| Steel | EREGL | NLMK |
-
-## Analytics Included
-
-- Period return
-- YTD performance
-- Annualized volatility
-- Sharpe ratio
-- Maximum drawdown
-- CAGR
-- Return-based Pearson correlation
-- Base-100 normalized performance chart
-- Optional USD-denominated comparison
-
-## Data Integrity Choices
+## Current Data Sources
 
 - **BIST source:** [Yahoo Finance](https://finance.yahoo.com/)
-- **MOEX source:** [Finam Export API](https://export.finam.ru/)
-- **FX conversion:** aligned to trading dates with forward-filled exchange-rate gaps inside the selected window
-- **Market-cap comparison:** curated snapshot from `config.yaml` for presentation consistency
-- **MOEX lag handling:** the interface explicitly warns when the latest available date is earlier than the user-selected end date
-
-These choices are intentional. The goal is a transparent comparative analytics product, not an opaque “real-time” claim.
+- **MOEX source:** [MOEX ISS API](https://iss.moex.com/)
+- **FX conversion:** Yahoo Finance FX series aligned to the shared trading window
+- **Market-cap comparison:** curated snapshot from `config.yaml`
 
 ## Architecture
 
 ```text
 BistvsMoex/
-├── app.py              # Streamlit entry point and dashboard orchestration
-├── config.yaml         # Sectors, colors, macro events, and market-cap snapshot metadata
+├── app.py                    # Streamlit entry point
+├── config.yaml               # Runtime configuration, sectors, events, metadata
 ├── src/
-│   ├── data.py         # External data access and currency conversion
-│   ├── analysis.py     # Financial metrics and normalization logic
-│   ├── config.py       # Config loading and translation layer
-│   ├── exceptions.py   # Custom domain exceptions
-│   └── ui.py           # Reusable UI rendering helpers
-└── tests/              # Automated test suite
+│   ├── analysis.py           # Financial calculations with fail-closed semantics
+│   ├── config.py             # Config loading and translations
+│   ├── dashboard.py          # Dashboard orchestration helpers
+│   ├── data.py               # Upstream fetchers and typed data contracts
+│   ├── exceptions.py         # Domain exceptions
+│   ├── models.py             # Shared typed result models
+│   └── ui.py                 # Reusable rendering helpers
+├── scripts/                  # Manual diagnostics and verification scripts
+└── tests/                    # Offline test suite + optional live-provider tests
 ```
 
-## Run Locally
-
-1. Create a virtual environment.
-2. Install dependencies.
-3. Start the dashboard.
+## Runtime Installation
 
 ```bash
 python -m venv venv
@@ -89,49 +46,79 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app opens at `http://localhost:8501`.
+The app opens at [http://localhost:8501](http://localhost:8501).
 
-## Configuration
+## Development / CI Installation
 
-Two environment overrides are supported:
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+Quality gates:
+
+```bash
+ruff check .
+mypy app.py src
+pytest tests
+pip-audit -r requirements.txt
+```
+
+By default, `pytest` excludes live-provider tests and runs only the deterministic offline suite.
+
+Run optional live tests explicitly:
+
+```bash
+pytest -m live
+```
+
+## Docker
+
+Build:
+
+```bash
+docker build -t bist-vs-moex .
+```
+
+Run:
+
+```bash
+docker run --rm -p 8501:8501 \
+  -e PORT=8501 \
+  -e BM_TIMEOUT=15 \
+  -e BM_MOEX_DELAY=2 \
+  bist-vs-moex
+```
+
+## Environment Contract
+
+Supported application overrides:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `BM_TIMEOUT` | Finam request timeout in seconds | `15` |
+| `BM_TIMEOUT` | Upstream request timeout in seconds | `15` |
 | `BM_MOEX_DELAY` | Expected MOEX publication lag in days | `2` |
+| `PORT` | Streamlit server port in Docker/server mode | `8501` |
 
-Example:
+## Manual Diagnostics
 
-```bash
-BM_TIMEOUT=30 streamlit run app.py
-```
+Scripts were moved under `scripts/` and are not part of the default test suite.
 
-## Testing
-
-The repository includes unit and robustness tests for:
-
-- financial calculations,
-- Finam URL generation and parsing,
-- async fetching behavior,
-- currency conversion,
-- defensive handling of invalid or future inputs.
-
-Run everything with:
+Examples:
 
 ```bash
-python -m pytest tests -v
+python scripts/debug_data_sources.py
+python scripts/debug_ytd.py
+python scripts/verify_data_integrity.py
 ```
 
-## Why This Matters In A Portfolio
+## Production Behaviour
 
-This project signals more than dashboard-building. It shows the ability to work across:
-
-- finance and software architecture,
-- Turkish and Russian market context,
-- data reliability and user-facing communication,
-- technical implementation and analytical framing.
-
-That combination is the core reason this project belongs in a graduate application portfolio.
+- Invalid or unsupported windows are rejected explicitly.
+- YTD is tied to the selected end-year, not the machine’s current year.
+- USD comparison uses only the shared FX-covered overlap.
+- Unsafe comparisons fail closed and render an unavailable state instead of `NaN`, `0.0`, or raw upstream errors.
 
 ## Disclaimer
 

@@ -5,14 +5,20 @@ Contains chart creation and styled component rendering functions.
 
 from __future__ import annotations
 
+import logging
+from datetime import date, datetime
+from decimal import Decimal
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from datetime import datetime
 
-from src.config import COLORS, get_text
 from src.analysis import interpret_correlation
+from src.config import COLORS, get_text
+from src.models import OperationResult
+
+logger = logging.getLogger(__name__)
 
 
 def get_custom_css() -> str:
@@ -189,7 +195,8 @@ def get_custom_css() -> str:
 
 def create_normalized_chart(tr_data: pd.Series, ru_data: pd.Series,
                             tr_ticker: str, ru_ticker: str, lang: str = "en",
-                            currency_label: str = "", macro_events: list = None) -> go.Figure:
+                            currency_label: str = "",
+                            macro_events: list[dict[str, object]] | None = None) -> go.Figure:
     """
     Create normalized performance chart with institutional styling.
     
@@ -289,11 +296,15 @@ def create_normalized_chart(tr_data: pd.Series, ru_data: pd.Series,
     for event in macro_events:
         try:
             # Convert to Python datetime for plotly
-            event_date = event['date']
-            if hasattr(event_date, 'to_pydatetime'):
+            event_date = event["date"]
+            if isinstance(event_date, pd.Timestamp):
                 event_date = event_date.to_pydatetime()
-            elif hasattr(event_date, 'date'):
+            elif isinstance(event_date, datetime):
+                pass
+            elif isinstance(event_date, date):
                 event_date = datetime.combine(event_date, datetime.min.time())
+            else:
+                raise ValueError("Unsupported event date type")
             
             event_type = event.get('type', 'other')
             
@@ -316,15 +327,37 @@ def create_normalized_chart(tr_data: pd.Series, ru_data: pd.Series,
                 annotation_font_size=9,
                 annotation_font_color=line_color
             )
-        except Exception:
-            # Skip events that can't be plotted
-            pass
+        except Exception as exc:
+            logger.warning("Skipping macro event that could not be plotted: %s", exc)
     
     return fig
 
 
-def render_metric_card(label: str, value: str, change: float = None, 
-                       is_currency: bool = False, help_text: str = None):
+def format_metric_value(
+    value: float | Decimal | None,
+    lang: str,
+    *,
+    decimals: int = 1,
+    prefix: str = "",
+    suffix: str = "",
+    signed: bool = False,
+) -> str:
+    """Format a metric value for display or return the localized unavailable text."""
+
+    if value is None:
+        return get_text("metric_unavailable", lang)
+
+    sign = "+" if signed and value >= 0 else ""
+    return f"{prefix}{sign}{value:,.{decimals}f}{suffix}"
+
+
+def render_metric_card(
+    label: str,
+    value: str,
+    change: float | None = None,
+    is_currency: bool = False,
+    help_text: str | None = None,
+) -> None:
     """
     Render a styled metric card.
     
@@ -356,7 +389,7 @@ def render_metric_card(label: str, value: str, change: float = None,
     )
 
 
-def render_correlation_card(correlation: float, lang: str = "en"):
+def render_correlation_card(correlation: float, lang: str = "en") -> None:
     """
     Render the correlation coefficient in a styled card.
     
@@ -377,15 +410,23 @@ def render_correlation_card(correlation: float, lang: str = "en"):
 
 
 def render_market_cap_card(
-    tr_cap: float,
-    ru_cap: float,
+    tr_cap: float | None,
+    ru_cap: float | None,
     lang: str = "en",
     source_note: str | None = None
 ) -> None:
     """Render Market Cap Comparison Card."""
 
+    unavailable_text = get_text("metric_unavailable", lang)
+    tr_display = unavailable_text
+    ru_display = unavailable_text
     comparison_text = get_text("market_cap_unavailable", lang)
-    if tr_cap > 0 and ru_cap > 0:
+    if tr_cap is not None:
+        tr_display = f"${tr_cap:.1f}B"
+    if ru_cap is not None:
+        ru_display = f"${ru_cap:.1f}B"
+
+    if tr_cap is not None and ru_cap is not None and tr_cap > 0 and ru_cap > 0:
         if ru_cap >= tr_cap:
             comparison_text = get_text(
                 "market_cap_leader",
@@ -417,12 +458,12 @@ def render_market_cap_card(
         <h5 style="color: {COLORS['text_muted']}; margin-bottom: 0.5rem; font-size: 0.9rem;">🏛️ {title}</h5>
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="text-align: center;">
-                <div style="font-size: 1.2rem; font-weight: bold; color: {COLORS['tr_line']};">${tr_cap:.1f}B</div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: {COLORS['tr_line']};">{tr_display}</div>
                 <div style="font-size: 0.7rem; color: {COLORS['text_muted']};">{turkey_label}</div>
             </div>
             <div style="font-size: 0.9rem; font-weight: bold; color: {COLORS['text_dark']}; padding: 0 0.5rem;">vs</div>
             <div style="text-align: center;">
-                <div style="font-size: 1.2rem; font-weight: bold; color: {COLORS['ru_line']};">${ru_cap:.1f}B</div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: {COLORS['ru_line']};">{ru_display}</div>
                 <div style="font-size: 0.7rem; color: {COLORS['text_muted']};">{russia_label}</div>
             </div>
         </div>
@@ -435,8 +476,8 @@ def render_market_cap_card(
 
 
 def render_ytd_card(
-    tr_ytd: float,
-    ru_ytd: float,
+    tr_ytd: float | None,
+    ru_ytd: float | None,
     tr_ticker: str,
     ru_ticker: str,
     year: int,
@@ -444,12 +485,15 @@ def render_ytd_card(
 ) -> None:
     """Render YTD Performance Card."""
 
-    tr_color = COLORS['success'] if tr_ytd >= 0 else COLORS['danger']
-    ru_color = COLORS['success'] if ru_ytd >= 0 else COLORS['danger']
-    tr_sign = "+" if tr_ytd >= 0 else ""
-    ru_sign = "+" if ru_ytd >= 0 else ""
+    neutral_color = COLORS["text_muted"]
+    tr_color = neutral_color if tr_ytd is None else COLORS["success"] if tr_ytd >= 0 else COLORS["danger"]
+    ru_color = neutral_color if ru_ytd is None else COLORS["success"] if ru_ytd >= 0 else COLORS["danger"]
+    tr_display = format_metric_value(tr_ytd, lang, decimals=1, suffix="%", signed=True)
+    ru_display = format_metric_value(ru_ytd, lang, decimals=1, suffix="%", signed=True)
 
-    if tr_ytd == ru_ytd:
+    if tr_ytd is None or ru_ytd is None:
+        winner = get_text("metric_unavailable", lang)
+    elif tr_ytd == ru_ytd:
         winner = get_text("tie_label", lang)
     elif tr_ytd > ru_ytd:
         winner = get_text("turkey", lang)
@@ -464,11 +508,11 @@ def render_ytd_card(
         <h5 style="color: {COLORS['text_muted']}; margin-bottom: 0.5rem; font-size: 0.9rem;">🏆 {title}</h5>
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="text-align: center;">
-                <div style="font-size: 1.1rem; font-weight: bold; color: {tr_color};">{tr_sign}{tr_ytd:.1f}%</div>
+                <div style="font-size: 1.1rem; font-weight: bold; color: {tr_color};">{tr_display}</div>
                 <div style="font-size: 0.7rem; color: {COLORS['text_muted']};">{tr_ticker}</div>
             </div>
             <div style="text-align: center;">
-                <div style="font-size: 1.1rem; font-weight: bold; color: {ru_color};">{ru_sign}{ru_ytd:.1f}%</div>
+                <div style="font-size: 1.1rem; font-weight: bold; color: {ru_color};">{ru_display}</div>
                 <div style="font-size: 0.7rem; color: {COLORS['text_muted']};">{ru_ticker}</div>
             </div>
         </div>
@@ -499,8 +543,31 @@ def render_methodology_card(points: list[str], lang: str = "en") -> None:
     """, unsafe_allow_html=True)
 
 
+def render_risk_summary_card(items: list[tuple[str, str]], lang: str = "en") -> None:
+    """Render a localized quick guide for the displayed risk metrics."""
 
-def show_error(result: dict, ticker: str, lang: str):
+    summary_items = "".join(
+        f"<li style='margin-bottom: 0.6rem;'><strong>{label}:</strong> {summary}</li>"
+        for label, summary in items
+    )
+
+    st.markdown(f"""
+    <div style="background-color: {COLORS['card_bg']}; padding: 1.5rem; border-radius: 8px; margin-top: 1.5rem; border: 1px solid #E0E0E0;">
+        <h4 style="color: {COLORS['primary']}; font-family: Georgia, serif; margin-bottom: 0.75rem;">
+            {get_text("risk_summary_title", lang)}
+        </h4>
+        <p style="color: {COLORS['text_dark']}; font-family: Arial, sans-serif; font-size: 0.92rem; line-height: 1.65; margin-bottom: 0.9rem;">
+            {get_text("risk_summary_intro", lang)}
+        </p>
+        <ul style="color: {COLORS['text_dark']}; font-family: Arial, sans-serif; font-size: 0.9rem; line-height: 1.6; padding-left: 1.2rem; margin: 0;">
+            {summary_items}
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+
+def show_error(result: OperationResult[object], ticker: str, lang: str) -> None:
     """
     Display an error banner based on the error code in the result.
     
@@ -509,18 +576,22 @@ def show_error(result: dict, ticker: str, lang: str):
         ticker: Ticker symbol for error message
         lang: Language code for translation
     """
-    error_code = result.get('error')
+    error_code = result.error_code
     msg = ""
     if error_code == 'timeout':
         msg = get_text("error_timeout", lang)
     elif error_code == 'connection':
         msg = get_text("error_connection", lang)
-    elif error_code and error_code.startswith('api_error'):
-        msg = get_text("error_api", lang, error=error_code.split(': ', 1)[1] if ': ' in error_code else error_code)
+    elif error_code == 'schema_error':
+        msg = get_text("error_schema", lang)
     elif error_code == 'no_data':
         msg = get_text("error_no_data", lang, ticker=ticker)
     elif error_code == 'insufficient_data':
         msg = get_text("error_insufficient", lang, ticker=ticker)
+    elif error_code == 'unsupported_window':
+        msg = get_text("error_unsupported_window", lang)
+    elif error_code == 'conversion_incomplete':
+        msg = get_text("error_conversion_incomplete", lang)
     else:
         msg = get_text("data_unavailable", lang, ticker=ticker)
     

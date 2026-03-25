@@ -1,0 +1,30 @@
+[tool.pytest.ini_options]
+addopts = "-m 'not live'"
+testpaths = ["tests"]
+markers = [
+  "live: optional live-provider integration tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["app.py", "src"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+check_untyped_defs = false
+pretty = true
+
+[[tool.mypy.overrides]]
+module = ["streamlit.*", "plotly.*", "pandas.*", "numpy.*", "yfinance.*"]
+ignore_missing_imports = true

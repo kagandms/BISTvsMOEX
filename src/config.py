@@ -5,11 +5,15 @@ Loads settings from config.yaml and provides constants.
 
 from __future__ import annotations
 
+import logging
 import os
-import yaml
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
+import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def load_config() -> dict:
@@ -19,17 +23,28 @@ def load_config() -> dict:
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
     
     with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+        try:
+            config = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise RuntimeError(
+                f"Failed to parse configuration file {config_path}: {exc}"
+            ) from exc
+
+    if not isinstance(config, dict):
+        raise RuntimeError(
+            f"Configuration file {config_path} must contain a YAML mapping, "
+            f"got {type(config).__name__}"
+        )
 
     # Apply environment variable overrides (Security hardening)
-    # BM_TIMEOUT -> api.finam.timeout_seconds
+    # BM_TIMEOUT -> api.moex_iss.timeout_seconds
     if "BM_TIMEOUT" in os.environ:
         try:
             timeout = int(os.environ["BM_TIMEOUT"])
-            if "api" in config and "finam" in config["api"]:
-                config["api"]["finam"]["timeout_seconds"] = timeout
+            if "api" in config and "moex_iss" in config["api"]:
+                config["api"]["moex_iss"]["timeout_seconds"] = timeout
         except ValueError:
-            pass # Invalid env var, ignore
+            pass  # Invalid env var, ignore
 
     # BM_MOEX_DELAY -> data.moex_delay_days
     if "BM_MOEX_DELAY" in os.environ:
@@ -74,7 +89,7 @@ TRANSLATIONS = {
         "current_pair": "CURRENT PAIR",
         "turkey": "Turkey",
         "russia": "Russia",
-        "data_source": "Data: Yahoo Finance & Finam Export",
+        "data_source": "Data: Yahoo Finance & MOEX ISS API",
         "built_with": "Built with Streamlit",
         "current_metrics": "📈 Current Metrics",
         "tr_period_change": "TR Period Change",
@@ -97,18 +112,27 @@ TRANSLATIONS = {
         "fetching_data": "Fetching market data...",
         "error_timeout": "⏱️ Connection timed out. Please try again.",
         "error_connection": "🔌 Connection error. Check your internet or API status.",
-        "error_api": "⚠️ API Error: {error}",
+        "error_schema": "⚠️ Upstream response format changed. Please try again later.",
         "error_no_data": "📉 No trading data found for {ticker} in this period (possible holiday/delisting).",
         "error_insufficient": "⚠️ Insufficient data points for {ticker} to perform analysis.",
+        "error_unsupported_window": "⚠️ The selected date range is unsupported.",
+        "error_conversion_incomplete": "⚠️ USD comparison is unavailable because both FX series did not cover the selected window safely.",
         "data_unavailable": "⚠️ Data unavailable for {ticker}. Try selecting an earlier end date (MOEX data has 1-2 day delay).",
         "date_adjusted": "⚠️ Using data until {actual_date} (selected: {requested_date}) - latest available data",
-        "moex_live": "✅ Live data from Finam Export API",
+        "moex_live": "✅ Live data from MOEX ISS API",
         "bist_live": "✅ Live data from Yahoo Finance",
         "no_data_error": "Unable to load data. Please adjust date range.",
+        "metric_unavailable": "Unavailable",
         "chart_title": "Normalized Performance Comparison (Rebased to 100)",
         "date_axis": "Date",
         "value_axis": "Normalized Value",
         "base_label": "Base = 100",
+        "usd_conversion_partial": "⚠️ USD comparison is limited to the shared FX-covered window: {start_date} - {end_date}.",
+        "comparison_window_partial": "⚠️ Comparison is limited to the shared trading window: {start_date} - {end_date}.",
+        "comparison_window_unavailable": "⚠️ Shared USD-covered history is too short for a safe comparison.",
+        "comparison_window_unavailable_local": "⚠️ The two assets do not share enough trading days for a safe comparison.",
+        "correlation_unavailable": "⚠️ Correlation could not be calculated safely for this window.",
+        "chart_unavailable": "⚠️ The normalized comparison chart is unavailable for this window.",
         "language": "🌐 Language",
         "start_price_label": "Start: {currency}{price} ({date})",
         "date_error": "⚠️ Start date must be before end date. Please adjust the date range.",
@@ -140,6 +164,12 @@ TRANSLATIONS = {
         "cagr": "CAGR",
         # Risk metrics section
         "risk_metrics": "Risk Metrics",
+        "risk_summary_title": "Risk Metric Quick Guide",
+        "risk_summary_intro": "These metrics complement headline returns by showing volatility, downside depth, and return quality.",
+        "volatility_summary": "Annualized return dispersion. Higher values mean wider price swings and less stable behavior.",
+        "sharpe_ratio_summary": "Risk-adjusted return per unit of volatility. Higher values usually indicate better efficiency.",
+        "max_drawdown_summary": "Largest peak-to-trough loss within the selected period. More negative values signal deeper downside risk.",
+        "cagr_summary": "Smoothed annualized growth rate between the first and last observation. Useful for long-horizon comparisons.",
         # USD conversion
         "show_usd": "Show Prices in USD ($)",
         "show_usd_help": "Convert prices to USD for fair comparison (enables inflation-adjusted view)",
@@ -155,7 +185,7 @@ TRANSLATIONS = {
         "leader_label": "Leader",
         "tie_label": "Tie",
         "methodology_title": "Methodology & Limitations",
-        "methodology_point_1": "Daily close prices are fetched from Yahoo Finance for BIST and Finam Export for MOEX.",
+        "methodology_point_1": "Daily close prices are fetched from Yahoo Finance for BIST and the official MOEX ISS REST API for MOEX.",
         "methodology_point_2": "MOEX data can lag the selected end date by 1-2 trading days.",
         "methodology_point_3": "USD mode aligns FX series to trading days and forward-fills missing exchange-rate observations.",
         "methodology_point_4": "The comparison chart rebases each asset to 100 on the first available point in the analysis window.",
@@ -174,7 +204,7 @@ TRANSLATIONS = {
         "current_pair": "MEVCUT ÇİFT",
         "turkey": "Türkiye",
         "russia": "Rusya",
-        "data_source": "Veri: Yahoo Finance & Finam Export",
+        "data_source": "Veri: Yahoo Finance & MOEX ISS API",
         "built_with": "Streamlit ile geliştirilmiştir",
         "current_metrics": "📈 Güncel Metrikler",
         "tr_period_change": "TR Dönem Değişimi",
@@ -197,18 +227,27 @@ TRANSLATIONS = {
         "fetching_data": "Piyasa verileri alınıyor...",
         "error_timeout": "⏱️ Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.",
         "error_connection": "🔌 Bağlantı hatası. İnternet bağlantınızı veya borsa durumunu kontrol edin.",
-        "error_api": "⚠️ API Hatası: {error}",
+        "error_schema": "⚠️ Yukarı akış veri formatı değişti. Lütfen daha sonra tekrar deneyin.",
         "error_no_data": "📉 {ticker} için bu dönemde işlem verisi bulunamadı (tatil/kota dışı olabilir).",
         "error_insufficient": "⚠️ {ticker} için analiz yapmaya yetecek kadar veri yok.",
+        "error_unsupported_window": "⚠️ Seçilen tarih aralığı desteklenmiyor.",
+        "error_conversion_incomplete": "⚠️ Her iki kur serisi seçilen pencereyi güvenli biçimde kapsamadığı için USD karşılaştırması kullanılamıyor.",
         "data_unavailable": "⚠️ {ticker} için veri mevcut değil. Daha erken bir bitiş tarihi seçin (MOEX verileri 1-2 gün gecikmeli gelir).",
         "date_adjusted": "⚠️ {actual_date} tarihine kadar veri kullanılıyor (seçili: {requested_date}) - mevcut en son veri",
-        "moex_live": "✅ Finam Export API'den canlı veri",
+        "moex_live": "✅ MOEX ISS API'den canlı veri",
         "bist_live": "✅ Yahoo Finance'den canlı veri",
         "no_data_error": "Veri yüklenemedi. Lütfen tarih aralığını değiştirin.",
+        "metric_unavailable": "Kullanılamıyor",
         "chart_title": "Normalize Edilmiş Performans Karşılaştırması (100'e Endeksli)",
         "date_axis": "Tarih",
         "value_axis": "Normalize Değer",
         "base_label": "Baz = 100",
+        "usd_conversion_partial": "⚠️ USD karşılaştırması, kur verisinin ortak kapsadığı pencereyle sınırlandı: {start_date} - {end_date}.",
+        "comparison_window_partial": "⚠️ Karşılaştırma yalnızca ortak işlem penceresiyle sınırlandı: {start_date} - {end_date}.",
+        "comparison_window_unavailable": "⚠️ Ortak USD-kapsamlı geçmiş güvenli karşılaştırma için çok kısa.",
+        "comparison_window_unavailable_local": "⚠️ İki varlık güvenli karşılaştırma için yeterli ortak işlem günü paylaşmıyor.",
+        "correlation_unavailable": "⚠️ Bu pencere için korelasyon güvenli şekilde hesaplanamadı.",
+        "chart_unavailable": "⚠️ Normalize karşılaştırma grafiği bu pencere için kullanılamıyor.",
         "language": "🌐 Dil",
         "start_price_label": "Başlangıç: {currency}{price} ({date})",
         "date_error": "⚠️ Başlangıç tarihi bitiş tarihinden önce olmalıdır. Lütfen tarih aralığını düzeltin.",
@@ -240,6 +279,12 @@ TRANSLATIONS = {
         "cagr": "Bileşik Yıllık Büyüme",
         # Risk metrics section
         "risk_metrics": "Risk Metrikleri",
+        "risk_summary_title": "Risk Metrikleri Kısa Rehberi",
+        "risk_summary_intro": "Bu metrikler, manşet getirinin yanında oynaklık, aşağı yönlü risk ve getiri kalitesini de gösterir.",
+        "volatility_summary": "Getirilerin yıllıklandırılmış dağılımı. Daha yüksek değerler daha sert fiyat hareketleri ve daha düşük istikrar anlamına gelir.",
+        "sharpe_ratio_summary": "Bir birim volatilite başına risk ayarlı getiri. Daha yüksek değerler genelde daha verimli performansa işaret eder.",
+        "max_drawdown_summary": "Seçilen dönemdeki en büyük zirve-dip kaybı. Daha negatif değerler daha derin aşağı yönlü riski gösterir.",
+        "cagr_summary": "İlk ve son gözlem arasındaki yumuşatılmış yıllık büyüme oranı. Uzun dönemli karşılaştırmalar için kullanışlıdır.",
         # USD conversion
         "show_usd": "Fiyatları Dolar ($) Cinsinden Göster",
         "show_usd_help": "Adil karşılaştırma için fiyatları USD'ye çevir (enflasyon-düzeltilmiş görünüm)",
@@ -255,7 +300,7 @@ TRANSLATIONS = {
         "leader_label": "Lider",
         "tie_label": "Berabere",
         "methodology_title": "Metodoloji ve Sınırlamalar",
-        "methodology_point_1": "Günlük kapanış fiyatları BIST için Yahoo Finance, MOEX için Finam Export üzerinden alınır.",
+        "methodology_point_1": "Günlük kapanış fiyatları BIST için Yahoo Finance, MOEX için resmi MOEX ISS REST API üzerinden alınır.",
         "methodology_point_2": "MOEX verisi seçilen bitiş tarihini 1-2 işlem günü gecikmeli yansıtabilir.",
         "methodology_point_3": "USD modu, kur serilerini işlem günlerine hizalar ve eksik kur gözlemlerini ileri taşıyarak doldurur.",
         "methodology_point_4": "Karşılaştırma grafiği, analiz penceresindeki ilk uygun noktada her varlığı 100 bazına endeksler.",
@@ -274,7 +319,7 @@ TRANSLATIONS = {
         "current_pair": "ТЕКУЩАЯ ПАРА",
         "turkey": "Турция",
         "russia": "Россия",
-        "data_source": "Данные: Yahoo Finance & Finam Export",
+        "data_source": "Данные: Yahoo Finance & MOEX ISS API",
         "built_with": "Создано с помощью Streamlit",
         "current_metrics": "📈 Текущие Показатели",
         "tr_period_change": "Изменение TR за период",
@@ -298,18 +343,27 @@ TRANSLATIONS = {
         "general_overview": "Общий Обзор",
         "error_timeout": "⏱️ Время ожидания истекло. Попробуйте еще раз.",
         "error_connection": "🔌 Ошибка подключения. Проверьте интернет или статус биржи.",
-        "error_api": "⚠️ Ошибка API: {error}",
+        "error_schema": "⚠️ Формат ответа внешнего источника изменился. Попробуйте позже.",
         "error_no_data": "📉 Нет данных торгов по {ticker} за этот период (возможно праздник/делистинг).",
         "error_insufficient": "⚠️ Недостаточно данных по {ticker} для анализа.",
+        "error_unsupported_window": "⚠️ Выбранный диапазон дат не поддерживается.",
+        "error_conversion_incomplete": "⚠️ Сравнение в USD недоступно, потому что оба валютных ряда не покрыли окно безопасным образом.",
         "data_unavailable": "⚠️ Данные недоступны для {ticker}. Выберите более раннюю дату окончания (данные MOEX имеют задержку 1-2 дня).",
         "date_adjusted": "⚠️ Используются данные до {actual_date} (выбрано: {requested_date}) - последние доступные данные",
-        "moex_live": "✅ Живые данные из Finam Export API",
+        "moex_live": "✅ Живые данные из MOEX ISS API",
         "bist_live": "✅ Живые данные из Yahoo Finance",
         "no_data_error": "Не удалось загрузить данные. Измените диапазон дат.",
+        "metric_unavailable": "Недоступно",
         "chart_title": "Сравнение Нормализованной Производительности (База = 100)",
         "date_axis": "Дата",
         "value_axis": "Нормализованное Значение",
         "base_label": "База = 100",
+        "usd_conversion_partial": "⚠️ Сравнение в USD ограничено общим окном покрытия FX: {start_date} - {end_date}.",
+        "comparison_window_partial": "⚠️ Сравнение ограничено только общим торговым окном: {start_date} - {end_date}.",
+        "comparison_window_unavailable": "⚠️ Общая история с покрытием FX слишком короткая для безопасного сравнения.",
+        "comparison_window_unavailable_local": "⚠️ У этих активов недостаточно общих торговых дней для безопасного сравнения.",
+        "correlation_unavailable": "⚠️ Корреляцию для этого окна нельзя безопасно рассчитать.",
+        "chart_unavailable": "⚠️ Нормализованный сравнительный график недоступен для этого окна.",
         "language": "🌐 Язык",
         "start_price_label": "Начало: {currency}{price} ({date})",
         "date_error": "⚠️ Дата начала должна быть раньше даты окончания. Пожалуйста, измените диапазон дат.",
@@ -341,6 +395,12 @@ TRANSLATIONS = {
         "cagr": "Среднегодовой темп роста",
         # Risk metrics section
         "risk_metrics": "Показатели Риска",
+        "risk_summary_title": "Краткий Гид по Риск-Метрикам",
+        "risk_summary_intro": "Эти метрики дополняют итоговую доходность, показывая волатильность, глубину просадки и качество доходности.",
+        "volatility_summary": "Годовая дисперсия доходности. Более высокие значения означают более резкие движения цены и меньшую стабильность.",
+        "sharpe_ratio_summary": "Доходность с поправкой на риск на единицу волатильности. Более высокие значения обычно означают лучшую эффективность.",
+        "max_drawdown_summary": "Наибольшее падение от пика до минимума за выбранный период. Более отрицательные значения указывают на более глубокий риск снижения.",
+        "cagr_summary": "Сглаженный среднегодовой темп роста между первым и последним наблюдением. Удобен для долгосрочного сравнения.",
         # USD conversion
         "show_usd": "Показать цены в долларах ($)",
         "show_usd_help": "Конвертировать цены в USD для справедливого сравнения (с учетом инфляции)",
@@ -355,7 +415,7 @@ TRANSLATIONS = {
         "leader_label": "Лидер",
         "tie_label": "Ничья",
         "methodology_title": "Методология и Ограничения",
-        "methodology_point_1": "Дневные цены закрытия берутся из Yahoo Finance для BIST и из Finam Export для MOEX.",
+        "methodology_point_1": "Дневные цены закрытия берутся из Yahoo Finance для BIST и из официального MOEX ISS REST API для MOEX.",
         "methodology_point_2": "Данные MOEX могут отставать от выбранной конечной даты на 1-2 торговых дня.",
         "methodology_point_3": "В режиме USD валютные ряды выравниваются по торговым дням, а пропуски курсов заполняются предыдущими значениями.",
         "methodology_point_4": "Сравнительный график переводит каждый актив к базе 100 в первой доступной точке анализируемого окна.",
@@ -370,7 +430,7 @@ LANGUAGE_OPTIONS = {
 }
 
 
-def get_text(key: str, lang: str = "en", **kwargs) -> str:
+def get_text(key: str, lang: str = "en", **kwargs: Any) -> str:
     """Get translated text for a given key."""
     text = TRANSLATIONS.get(lang, TRANSLATIONS["en"]).get(key, key)
     if kwargs:
@@ -390,7 +450,11 @@ def get_sector_options(lang: str = "en") -> dict:
     return {get_sector_display_name(sid, lang): sid for sid in SECTORS.keys()}
 
 
-def get_macro_events_in_range(start_date: datetime, end_date: datetime, lang: str = "en") -> list:
+def get_macro_events_in_range(
+    start_date: date | datetime,
+    end_date: date | datetime,
+    lang: str = "en",
+) -> list[dict[str, object]]:
     """
     Get macro events within a date range.
     
@@ -402,16 +466,14 @@ def get_macro_events_in_range(start_date: datetime, end_date: datetime, lang: st
     Returns:
         List of events with localized titles
     """
-    events = []
+    events: list[dict[str, object]] = []
     # Convert to date if datetime is passed
-    if isinstance(start_date, datetime):
-        start_date = start_date.date()
-    if isinstance(end_date, datetime):
-        end_date = end_date.date()
+    start_day = start_date.date() if isinstance(start_date, datetime) else start_date
+    end_day = end_date.date() if isinstance(end_date, datetime) else end_date
     
     for event in MACRO_EVENTS:
         event_date = datetime.strptime(event["date"], "%Y-%m-%d").date()
-        if start_date <= event_date <= end_date:
+        if start_day <= event_date <= end_day:
             title_key = f"title_{lang}"
             events.append({
                 "date": event_date,

@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest>=7.4,<9
+ruff>=0.6,<1
+mypy>=1.10,<2
+pip-audit>=2.7,<3
+types-PyYAML>=6.0,<7
+types-requests>=2.32,<3
