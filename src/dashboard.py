@@ -55,6 +55,8 @@ async def fetch_dashboard_payload(
     ru_ytd_task = fetch_ytd_start_price(sector_data["RU"], requested_range.end, is_russian=True)
 
     if include_usd:
+        start_year = date(requested_range.end.year, 1, 1)
+        fx_start = min(requested_range.start, start_year)
         (
             tr_result,
             ru_result,
@@ -70,7 +72,7 @@ async def fetch_dashboard_payload(
             ru_cap_task,
             tr_ytd_task,
             ru_ytd_task,
-            fetch_usd_rates_async(requested_range.start, requested_range.end),
+            fetch_usd_rates_async(fx_start, requested_range.end),
         )
     else:
         (
@@ -192,14 +194,22 @@ def calculate_ytd_change_usd(
     ):
         return error_result("insufficient_data", requested_range)
 
+    # Convert the baseline amount into USD using the FX rate on the baseline date
+    baseline_date = pd.Timestamp(baseline_result.effective_range.start)
+    baseline_series = pd.Series([baseline_result.payload], index=[baseline_date])
+    converted_baseline_series = convert_to_usd(baseline_series, currency_code, fx_rates)
+    
+    if converted_baseline_series.empty:
+        # Fallback to local currency YTD
+        return calculate_ytd_change(price_result, baseline_result)
+        
+    usd_baseline = converted_baseline_series.iloc[0]
+
     # Convert the full price series to USD
     usd_series = convert_to_usd(price_result.payload, currency_code, fx_rates)
     if usd_series.empty or len(usd_series) < 2:
-        # Fallback: USD conversion unavailable, use local currency
         return calculate_ytd_change(price_result, baseline_result)
 
-    # Derive the USD baseline from the first available converted price
-    usd_baseline = usd_series.iloc[0]
     usd_current = usd_series.iloc[-1]
 
     try:
@@ -293,9 +303,12 @@ def _build_series_pair_result(
 ) -> OperationResult[SeriesPair]:
     """Align both series to the shared trading window before rendering."""
 
-    common_index = tr_series.index.intersection(ru_series.index)
-    effective_range = _build_effective_range_from_index(common_index)
-    if effective_range is None or len(common_index) < min_points:
+    aligned_df = pd.concat([tr_series.rename("tr"), ru_series.rename("ru")], axis=1)
+    # Forward fill handles non-overlapping holidays organically (Outer Join)
+    aligned_df = aligned_df.ffill().dropna()
+
+    effective_range = _build_effective_range_from_index(aligned_df.index)
+    if effective_range is None or len(aligned_df) < min_points:
         return error_result(
             error_code,
             requested_range,
@@ -304,8 +317,8 @@ def _build_series_pair_result(
 
     return success_result(
         SeriesPair(
-            tr_series=tr_series.loc[common_index],
-            ru_series=ru_series.loc[common_index],
+            tr_series=aligned_df["tr"],
+            ru_series=aligned_df["ru"],
             tr_currency=tr_currency,
             ru_currency=ru_currency,
             currency_label=currency_label,

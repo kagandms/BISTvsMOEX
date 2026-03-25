@@ -58,11 +58,12 @@ class TestCalculateYtdChangeUsd:
 
     def test_happy_path_try_conversion(self) -> None:
         """With valid FX data, YTD should be computed in USD terms."""
-        # TRY prices: 100, 120 ;  USD/TRY rate: 10, 10
-        # USD prices: 10, 12 => YTD = (12-10)/10*100 = +20%
-        prices = _make_price_result([100.0, 120.0])
-        baseline = _make_baseline_result(90.0)  # local baseline, ignored in USD path
-        fx = _make_fx_rates(try_rates=[10.0, 10.0])
+        # Baseline TRY: 90.0, Rate on Jan 1: 9.0 => Baseline USD = 10.0
+        # Price on Jan 3: 120.0, Rate on Jan 3: 10.0 => Current USD = 12.0
+        # YTD USD: (12.0 - 10.0) / 10.0 = 20%
+        prices = _make_price_result([100.0, 120.0], start="2025-01-02")
+        baseline = _make_baseline_result(90.0)
+        fx = _make_fx_rates(try_rates=[9.0, 10.0, 10.0], start="2025-01-01")
 
         result = calculate_ytd_change_usd(prices, baseline, "TRY", fx)
 
@@ -72,11 +73,12 @@ class TestCalculateYtdChangeUsd:
 
     def test_happy_path_rub_conversion(self) -> None:
         """RUB conversion path works correctly."""
-        # RUB prices: 5000, 6000 ; USD/RUB rate: 100, 100
-        # USD prices: 50, 60 => YTD = (60-50)/50*100 = +20%
-        prices = _make_price_result([5000.0, 6000.0])
+        # Baseline RUB: 4500.0, Rate on Jan 1: 90.0 => Baseline USD = 50.0
+        # Price on Jan 3: 6000.0, Rate on Jan 3: 100.0 => Current USD = 60.0
+        # YTD USD: (60.0 - 50.0) / 50.0 = 20%
+        prices = _make_price_result([5000.0, 6000.0], start="2025-01-02")
         baseline = _make_baseline_result(4500.0)
-        fx = _make_fx_rates(rub_rates=[100.0, 100.0])
+        fx = _make_fx_rates(rub_rates=[90.0, 100.0, 100.0], start="2025-01-01")
 
         result = calculate_ytd_change_usd(prices, baseline, "RUB", fx)
 

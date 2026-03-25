@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -39,16 +40,19 @@ _MOEX_ISS_PAGE_SIZE = 500
 _MOEX_ISS_MAX_PAGES = 20  # Safety limit: 20 pages × 500 rows = 10,000 trading days (~40 years)
 
 _moex_session: requests.Session | None = None
+_session_lock = threading.Lock()
 
 
 def _get_moex_session() -> requests.Session:
     """Return a reusable requests.Session for MOEX ISS calls (connection pooling)."""
     global _moex_session
     if _moex_session is None:
-        _moex_session = requests.Session()
-        _moex_session.headers.update(
-            {"User-Agent": "Mozilla/5.0 (compatible; EurasianBridge/1.0)"}
-        )
+        with _session_lock:
+            if _moex_session is None:
+                _moex_session = requests.Session()
+                _moex_session.headers.update(
+                    {"User-Agent": "Mozilla/5.0 (compatible; EurasianBridge/1.0)"}
+                )
     return _moex_session
 
 
@@ -215,26 +219,28 @@ def convert_to_usd(
         return prices.iloc[0:0]
 
     rate_col = target_rate_df.columns[0]
-    aligned_rates = target_rate_df.reindex(prices.index).ffill()
+    aligned_rates = target_rate_df.reindex(prices.index, method="ffill")
     aligned = prices.to_frame("price").join(aligned_rates, how="left")
     aligned = aligned.dropna(subset=[rate_col])
     if aligned.empty:
         return prices.iloc[0:0]
 
+    # Yüksek performanslı dönüşüm (iterrows yerine zip ve ndarray kullanımı)
+    prices_arr = aligned["price"].astype(str).values
+    rates_arr = aligned[rate_col].astype(str).values
+    
     converted: list[Decimal] = []
     converted_index: list[pd.Timestamp] = []
-    for index, row in aligned.iterrows():
+    
+    for idx, p_str, r_str in zip(aligned.index, prices_arr, rates_arr):
         try:
-            price_value = Decimal(str(row["price"]))
-            rate_value = Decimal(str(row[rate_col]))
+            price_value = Decimal(p_str)
+            rate_value = Decimal(r_str)
+            if rate_value > 0 and price_value > 0:
+                converted.append(price_value / rate_value)
+                converted_index.append(pd.Timestamp(idx))
         except (InvalidOperation, TypeError, ValueError):
             continue
-
-        if rate_value <= 0 or price_value <= 0:
-            continue
-
-        converted.append(price_value / rate_value)
-        converted_index.append(pd.Timestamp(index))
 
     return pd.Series(converted, index=pd.DatetimeIndex(converted_index))
 
