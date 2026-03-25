@@ -194,6 +194,9 @@ def calculate_ytd_change_usd(
     ):
         return error_result("insufficient_data", requested_range)
 
+    if not baseline_result.effective_range:
+        return calculate_ytd_change(price_result, baseline_result)
+
     # Convert the baseline amount into USD using the FX rate on the baseline date
     baseline_date = pd.Timestamp(baseline_result.effective_range.start)
     baseline_series = pd.Series([baseline_result.payload], index=[baseline_date])

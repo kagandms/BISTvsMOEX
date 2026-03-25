@@ -232,7 +232,7 @@ def convert_to_usd(
     converted: list[Decimal] = []
     converted_index: list[pd.Timestamp] = []
     
-    for idx, p_str, r_str in zip(aligned.index, prices_arr, rates_arr):
+    for idx, p_str, r_str in zip(aligned.index, prices_arr, rates_arr, strict=True):
         try:
             price_value = Decimal(p_str)
             rate_value = Decimal(r_str)
