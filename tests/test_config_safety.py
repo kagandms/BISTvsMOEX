@@ -5,7 +5,6 @@ Validates RuntimeError on malformed or non-dict YAML.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import mock_open, patch
 
 import pytest

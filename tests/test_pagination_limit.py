@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import Mock, patch
 
-from src.data import _fetch_moex_iss_candles, _MOEX_ISS_MAX_PAGES, _MOEX_ISS_PAGE_SIZE
+from src.data import _MOEX_ISS_MAX_PAGES, _MOEX_ISS_PAGE_SIZE, _fetch_moex_iss_candles
 
 
 def _make_full_page_response() -> Mock:

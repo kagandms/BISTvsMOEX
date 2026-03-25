@@ -6,22 +6,6 @@ from __future__ import annotations
 
 import logging
 import os
-
-# Configure structured logging before any module-level imports trigger loggers.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
-
-if "SENTRY_DSN" in os.environ:
-    import sentry_sdk
-    sentry_sdk.init(
-        dsn=os.environ["SENTRY_DSN"],
-        traces_sample_rate=1.0,
-    )
-    logging.info("Sentry APM initialized.")
-
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -66,6 +50,22 @@ from src.ui import (
     render_ytd_card,
     show_error,
 )
+
+# Configure structured logging before any execution
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+
+if "SENTRY_DSN" in os.environ:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        traces_sample_rate=1.0,
+    )
+    logging.info("Sentry APM initialized.")
 
 
 def build_market_cap_source_note(lang: str) -> str:
