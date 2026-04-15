@@ -18,11 +18,12 @@ import yfinance as yf
 from curl_cffi import requests as curl_requests
 from yfinance.exceptions import YFPricesMissingError, YFRateLimitError, YFTzMissingError
 
-from src.config import API_CONFIG, CACHE_CONFIG, DATA_CONFIG, MARKET_CAPS
+from src.config import API_CONFIG, CACHE_CONFIG, DATA_CONFIG, INFLATION_CONFIG, MARKET_CAPS
 from src.exceptions import DataSourceError, UpstreamConnectionError, UpstreamTimeoutError
 from src.models import (
     DateRange,
     FxRateWindow,
+    InflationWindow,
     OperationResult,
     build_date_range,
     error_result,
@@ -86,6 +87,16 @@ def _sanitize_close_series(data_frame: pd.DataFrame) -> pd.Series:
     clean_series = clean_series[~clean_series.index.duplicated(keep="last")]
     clean_series = clean_series.sort_index()
     return clean_series
+
+
+def _sanitize_numeric_series(series: pd.Series) -> pd.Series:
+    """Return a numeric, finite, ordered series."""
+
+    numeric_series = pd.to_numeric(series, errors="coerce")
+    clean_series = numeric_series.replace([float("inf"), float("-inf")], pd.NA).dropna()
+    clean_series.index = _strip_timezone(pd.to_datetime(clean_series.index))
+    clean_series = clean_series[~clean_series.index.duplicated(keep="last")]
+    return clean_series.sort_index()
 
 
 def _build_effective_range(series: pd.Series) -> DateRange:
@@ -243,6 +254,189 @@ def convert_to_usd(
             continue
 
     return pd.Series(converted, index=pd.DatetimeIndex(converted_index))
+
+
+def _build_monthly_cpi_index(monthly_change_pct: dict[str, object]) -> pd.Series:
+    """Build a cumulative monthly CPI index from monthly percentage changes."""
+
+    cumulative_index = Decimal("100")
+    values: list[float] = []
+    index: list[pd.Timestamp] = []
+
+    for month_key in sorted(monthly_change_pct):
+        try:
+            monthly_change = Decimal(str(monthly_change_pct[month_key]))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise DataSourceError(
+                f"Invalid CPI snapshot value for {month_key}",
+                exc,
+                error_code="inflation_incomplete",
+            ) from exc
+
+        cumulative_index *= Decimal("1") + (monthly_change / Decimal("100"))
+        index.append(pd.Timestamp(f"{month_key}-01"))
+        values.append(float(cumulative_index))
+
+    return pd.Series(values, index=pd.DatetimeIndex(index), name="CPI")
+
+
+def _get_country_cpi_series(country_code: str) -> pd.Series:
+    """Return the configured monthly CPI index series for a country code."""
+
+    monthly_change_pct = INFLATION_CONFIG.get("monthly_change_pct", {}).get(country_code)
+    if not isinstance(monthly_change_pct, dict) or not monthly_change_pct:
+        raise DataSourceError(
+            f"CPI snapshot is unavailable for {country_code}",
+            error_code="inflation_incomplete",
+        )
+
+    return _build_monthly_cpi_index(monthly_change_pct)
+
+
+def _month_start(value: date | pd.Timestamp) -> pd.Timestamp:
+    """Return the normalized first day of the month."""
+
+    return pd.Timestamp(value).to_period("M").to_timestamp()
+
+
+def _month_end(value: pd.Timestamp) -> date:
+    """Return the last calendar day of the month."""
+
+    return (value + pd.offsets.MonthEnd(0)).date()
+
+
+def _has_complete_monthly_coverage(
+    cpi_series: pd.Series,
+    start_month: pd.Timestamp,
+    end_month: pd.Timestamp,
+) -> bool:
+    """Return True when every month in the requested span exists in the CPI series."""
+
+    expected_months = pd.period_range(start_month, end_month, freq="M")
+    available_months = set(cpi_series.index.to_period("M"))
+    return all(month in available_months for month in expected_months)
+
+
+@st.cache_data(
+    ttl=CACHE_CONFIG["ttl_seconds"],
+    max_entries=CACHE_CONFIG.get("max_entries", 50),
+)
+def _load_cached_inflation_window(start_date: date, end_date: date) -> InflationWindow:
+    """Load a shared monthly CPI window for real-return calculations."""
+
+    tr_cpi = _get_country_cpi_series("TR")
+    ru_cpi = _get_country_cpi_series("RU")
+    start_month = _month_start(start_date)
+    requested_end_month = _month_start(end_date)
+
+    tr_supported_months = tr_cpi[tr_cpi.index <= requested_end_month].index
+    ru_supported_months = ru_cpi[ru_cpi.index <= requested_end_month].index
+    if tr_supported_months.empty or ru_supported_months.empty:
+        raise DataSourceError(
+            "CPI snapshot does not overlap the requested period",
+            error_code="inflation_incomplete",
+        )
+
+    shared_base_month = min(tr_supported_months.max(), ru_supported_months.max())
+    if shared_base_month < start_month:
+        raise DataSourceError(
+            "CPI snapshot starts after the requested comparison window",
+            error_code="inflation_incomplete",
+        )
+
+    if not _has_complete_monthly_coverage(tr_cpi, start_month, shared_base_month):
+        raise DataSourceError(
+            "TR CPI snapshot has a gap inside the requested window",
+            error_code="inflation_incomplete",
+        )
+
+    if not _has_complete_monthly_coverage(ru_cpi, start_month, shared_base_month):
+        raise DataSourceError(
+            "RU CPI snapshot has a gap inside the requested window",
+            error_code="inflation_incomplete",
+        )
+
+    return InflationWindow(
+        tr_cpi=tr_cpi[(tr_cpi.index >= start_month) & (tr_cpi.index <= shared_base_month)],
+        ru_cpi=ru_cpi[(ru_cpi.index >= start_month) & (ru_cpi.index <= shared_base_month)],
+        shared_base_month=shared_base_month,
+    )
+
+
+def fetch_inflation_window(
+    start_date: date,
+    end_date: date,
+) -> OperationResult[InflationWindow]:
+    """Fetch the shared CPI window used to calculate real returns."""
+
+    requested_range = _validate_requested_window(start_date, end_date)
+    if requested_range is None:
+        return error_result("unsupported_window", None)
+
+    try:
+        payload = _load_cached_inflation_window(start_date, end_date)
+    except DataSourceError as exc:
+        logger.warning("CPI snapshot fetch failed: %s", exc)
+        return error_result(exc.error_code, requested_range)
+
+    effective_end = min(end_date, _month_end(payload.shared_base_month))
+    effective_range = build_date_range(start_date, effective_end)
+    return success_result(
+        payload,
+        requested_range,
+        effective_range,
+        is_complete=effective_end >= end_date,
+    )
+
+
+def convert_to_real(
+    prices: pd.Series,
+    country_code: str,
+    inflation_window: InflationWindow,
+) -> pd.Series:
+    """Convert a nominal price series into end-of-window purchasing-power terms."""
+
+    if prices.empty:
+        return prices.iloc[0:0]
+
+    clean_prices = _sanitize_numeric_series(prices)
+    if clean_prices.empty:
+        return clean_prices
+
+    cpi_series = None
+    if country_code == "TR":
+        cpi_series = inflation_window.tr_cpi
+    elif country_code == "RU":
+        cpi_series = inflation_window.ru_cpi
+
+    if cpi_series is None or cpi_series.empty:
+        return clean_prices.iloc[0:0]
+
+    base_month = inflation_window.shared_base_month.to_period("M")
+    cpi_by_month = {
+        month.to_period("M"): Decimal(str(value))
+        for month, value in cpi_series.items()
+    }
+    base_cpi = cpi_by_month.get(base_month)
+    if base_cpi is None or base_cpi <= 0:
+        return clean_prices.iloc[0:0]
+
+    supported_prices = clean_prices[clean_prices.index.to_period("M") <= base_month]
+    if supported_prices.empty:
+        return clean_prices.iloc[0:0]
+
+    converted_values: list[float] = []
+    converted_index: list[pd.Timestamp] = []
+    for index_value, price in supported_prices.items():
+        month = pd.Timestamp(index_value).to_period("M")
+        cpi_value = cpi_by_month.get(month)
+        if cpi_value is None or cpi_value <= 0:
+            return clean_prices.iloc[0:0]
+
+        converted_values.append(float(Decimal(str(price)) * base_cpi / cpi_value))
+        converted_index.append(pd.Timestamp(index_value))
+
+    return pd.Series(converted_values, index=pd.DatetimeIndex(converted_index))
 
 
 def _fetch_moex_iss_candles(
@@ -477,6 +671,15 @@ async def fetch_usd_rates_async(
     return await asyncio.to_thread(fetch_usd_rates, start_date, end_date)
 
 
+async def fetch_inflation_window_async(
+    start_date: date,
+    end_date: date,
+) -> OperationResult[InflationWindow]:
+    """Async wrapper for curated CPI coverage."""
+
+    return await asyncio.to_thread(fetch_inflation_window, start_date, end_date)
+
+
 async def fetch_ytd_start_price(
     ticker: str,
     selected_end_date: date,
@@ -502,7 +705,7 @@ async def fetch_ytd_start_price(
         baseline,
         requested_range,
         effective_range,
-        is_complete=_is_ytd_baseline_complete(start_year, effective_range.end),
+        is_complete=True,
     )
 
 
@@ -532,14 +735,6 @@ def _build_date_range_for_single_day(value: pd.Timestamp) -> DateRange:
     single_day = pd.Timestamp(value).date()
     return build_date_range(single_day, single_day)
 
-
-def _is_ytd_baseline_complete(start_year: date, baseline_date: date) -> bool:
-    """Return True when the baseline lands within the expected opening window."""
-
-    grace_days = int(DATA_CONFIG.get("ytd_baseline_grace_days", 7))
-    latest_valid_baseline = start_year + timedelta(days=grace_days)
-    return baseline_date <= latest_valid_baseline
-
-
 fetch_stock_data.clear = _load_cached_stock_series.clear  # type: ignore[attr-defined]
 fetch_usd_rates.clear = _load_cached_usd_rates.clear  # type: ignore[attr-defined]
+fetch_inflation_window.clear = _load_cached_inflation_window.clear  # type: ignore[attr-defined]

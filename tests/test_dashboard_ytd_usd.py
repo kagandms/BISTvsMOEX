@@ -86,18 +86,27 @@ class TestCalculateYtdChangeUsd:
         assert result.payload is not None
         assert abs(result.payload - 20.0) < 0.01
 
-    def test_fallback_when_fx_empty(self) -> None:
-        """When FX data is empty, falls back to local currency YTD."""
+    def test_returns_conversion_incomplete_when_fx_empty(self) -> None:
+        """When FX data is empty, USD YTD must fail closed."""
         prices = _make_price_result([100.0, 120.0])
         baseline = _make_baseline_result(100.0)
         fx = FxRateWindow(usd_try=None, usd_rub=None)
 
         result = calculate_ytd_change_usd(prices, baseline, "TRY", fx)
 
-        # Fallback uses local: (120-100)/100*100 = 20%
-        assert result.is_success
-        assert result.payload is not None
-        assert abs(result.payload - 20.0) < 0.01
+        assert not result.is_success
+        assert result.error_code == "conversion_incomplete"
+
+    def test_returns_conversion_incomplete_when_baseline_rate_is_missing(self) -> None:
+        """Missing baseline FX coverage must not leak a local-currency YTD result."""
+        prices = _make_price_result([100.0, 120.0], start="2025-01-02")
+        baseline = _make_baseline_result(100.0)
+        fx = _make_fx_rates(try_rates=[10.0], start="2025-01-02")
+
+        result = calculate_ytd_change_usd(prices, baseline, "TRY", fx)
+
+        assert not result.is_success
+        assert result.error_code == "conversion_incomplete"
 
     def test_error_when_price_result_failed(self) -> None:
         """Returns error when the price result itself is an error."""

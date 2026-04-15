@@ -1,5 +1,5 @@
 """
-Unit tests for USD conversion behaviour.
+Unit tests for conversion behaviour.
 """
 
 from __future__ import annotations
@@ -8,8 +8,8 @@ from decimal import Decimal
 
 import pandas as pd
 
-from src.data import convert_to_usd
-from src.models import FxRateWindow
+from src.data import convert_to_real, convert_to_usd
+from src.models import FxRateWindow, InflationWindow
 
 
 class TestConvertToUsd:
@@ -64,5 +64,68 @@ class TestConvertToUsd:
         rates = FxRateWindow(usd_try=None, usd_rub=None)
 
         result = convert_to_usd(prices, "TRY", rates)
+
+        assert result.empty
+
+
+class TestConvertToReal:
+    """Tests for convert_to_real."""
+
+    def test_convert_to_real_uses_shared_base_month(self) -> None:
+        prices = pd.Series(
+            [100.0, 110.0, 120.0],
+            index=pd.to_datetime(["2025-04-10", "2025-05-10", "2025-06-10"]),
+        )
+        cpi = pd.Series(
+            [103.0, 104.03, 105.0703],
+            index=pd.to_datetime(["2025-04-01", "2025-05-01", "2025-06-01"]),
+        )
+        inflation = InflationWindow(
+            tr_cpi=cpi,
+            ru_cpi=cpi,
+            shared_base_month=pd.Timestamp("2025-06-01"),
+        )
+
+        result = convert_to_real(prices, "TR", inflation)
+
+        assert len(result) == 3
+        assert round(float(result.iloc[0]), 4) == round(100.0 * 105.0703 / 103.0, 4)
+        assert round(float(result.iloc[-1]), 4) == 120.0
+
+    def test_convert_to_real_trims_dates_beyond_shared_base_month(self) -> None:
+        prices = pd.Series(
+            [100.0, 110.0, 120.0],
+            index=pd.to_datetime(["2025-12-10", "2026-01-10", "2026-03-10"]),
+        )
+        cpi = pd.Series(
+            [101.0, 103.0],
+            index=pd.to_datetime(["2025-12-01", "2026-01-01"]),
+        )
+        inflation = InflationWindow(
+            tr_cpi=cpi,
+            ru_cpi=cpi,
+            shared_base_month=pd.Timestamp("2026-01-01"),
+        )
+
+        result = convert_to_real(prices, "TR", inflation)
+
+        assert result.index.tolist() == [
+            pd.Timestamp("2025-12-10"),
+            pd.Timestamp("2026-01-10"),
+        ]
+
+    def test_convert_to_real_fails_closed_when_month_is_missing(self) -> None:
+        prices = pd.Series(
+            [100.0, 110.0],
+            index=pd.to_datetime(["2025-04-10", "2025-05-10"]),
+        )
+        cpi = pd.Series([103.0], index=pd.to_datetime(["2025-04-01"]))
+        inflation = InflationWindow(
+            tr_cpi=cpi,
+            ru_cpi=cpi,
+            shared_base_month=pd.Timestamp("2025-05-01"),
+        )
+
+        result = convert_to_real(prices, "TR", inflation)
 
         assert result.empty

@@ -119,6 +119,10 @@ class TestConfig:
             "metric_unavailable",
             "error_schema",
             "error_conversion_incomplete",
+            "error_inflation_incomplete",
+            "mode_real",
+            "real_conversion_unavailable",
+            "methodology_point_6",
         )
 
         for lang in ("en", "tr", "ru"):

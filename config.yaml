@@ -29,7 +29,6 @@ data:
   min_correlation_points: 10
   default_lookback_days: 365
   moex_delay_days: 2  # MOEX data typically has 1-2 day delay
-  ytd_baseline_grace_days: 7
   fallback_lookback_days: 30  # Days to look back if no data in requested range
 
 # Sector pairs - centralized data management
@@ -73,6 +72,40 @@ market_caps:
   MGNT: 6.5
   EREGL.IS: 4.1
   NLMK: 9.8
+
+# Curated monthly CPI change snapshots used for real-return mode.
+# Coverage intentionally stops at the latest shared published month.
+# TR series: TCMB/TURKSTAT consumer price releases
+# RU series: Rosstat CPI releases
+inflation_adjustment:
+  latest_shared_month: "2026-02"
+  monthly_change_pct:
+    TR:
+      "2025-03": 2.46
+      "2025-04": 3.00
+      "2025-05": 1.53
+      "2025-06": 1.37
+      "2025-07": 2.06
+      "2025-08": 2.04
+      "2025-09": 3.23
+      "2025-10": 2.55
+      "2025-11": 0.87
+      "2025-12": 0.89
+      "2026-01": 4.84
+      "2026-02": 2.96
+    RU:
+      "2025-03": 0.65
+      "2025-04": 0.90
+      "2025-05": 0.43
+      "2025-06": 0.20
+      "2025-07": 0.57
+      "2025-08": -0.40
+      "2025-09": 0.34
+      "2025-10": 0.50
+      "2025-11": 0.42
+      "2025-12": 0.32
+      "2026-01": 1.62
+      "2026-02": 0.73
 
 # Color palette - Institutional Finance theme
 colors:

@@ -9,8 +9,8 @@ WORKDIR /app
 
 RUN adduser --disabled-password --gecos "" appuser
 
-COPY requirements.lock .
-RUN pip install --upgrade pip && pip install -r requirements.lock
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 

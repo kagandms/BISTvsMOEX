@@ -592,6 +592,8 @@ def show_error(result: OperationResult[object], ticker: str, lang: str) -> None:
         msg = get_text("error_unsupported_window", lang)
     elif error_code == 'conversion_incomplete':
         msg = get_text("error_conversion_incomplete", lang)
+    elif error_code == 'inflation_incomplete':
+        msg = get_text("error_inflation_incomplete", lang)
     else:
         msg = get_text("data_unavailable", lang, ticker=ticker)
     

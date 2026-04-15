@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date, datetime, timedelta
+from typing import cast
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -33,11 +34,12 @@ from src.config import (
 )
 from src.dashboard import (
     calculate_ytd_change,
+    calculate_ytd_change_real,
     calculate_ytd_change_usd,
     load_dashboard_data,
     prepare_comparison_series,
 )
-from src.models import DashboardPayload, OperationResult, SeriesPair
+from src.models import AnalysisMode, DashboardPayload, OperationResult, SeriesPair, error_result
 from src.ui import (
     create_normalized_chart,
     format_metric_value,
@@ -86,6 +88,7 @@ def build_methodology_points(lang: str) -> list[str]:
         get_text("methodology_point_3", lang),
         get_text("methodology_point_4", lang),
         get_text("methodology_point_5", lang),
+        get_text("methodology_point_6", lang),
     ]
 
 
@@ -141,17 +144,31 @@ def render_general_overview(
     end_date: date,
     lang: str,
     *,
-    show_usd: bool = False,
+    analysis_mode: AnalysisMode = "local",
 ) -> None:
     """Render YTD and market-cap overview cards."""
 
-    if show_usd and payload.usd_rates.is_success and payload.usd_rates.payload is not None:
+    if analysis_mode == "usd" and payload.usd_rates.is_success and payload.usd_rates.payload is not None:
         tr_ytd_result = calculate_ytd_change_usd(
             payload.tr_result, payload.tr_ytd_start, "TRY", payload.usd_rates.payload,
         )
         ru_ytd_result = calculate_ytd_change_usd(
             payload.ru_result, payload.ru_ytd_start, "RUB", payload.usd_rates.payload,
         )
+    elif (
+        analysis_mode == "real"
+        and payload.inflation_window.is_success
+        and payload.inflation_window.payload is not None
+    ):
+        tr_ytd_result = calculate_ytd_change_real(
+            payload.tr_result, payload.tr_ytd_start, "TR", payload.inflation_window.payload,
+        )
+        ru_ytd_result = calculate_ytd_change_real(
+            payload.ru_result, payload.ru_ytd_start, "RU", payload.inflation_window.payload,
+        )
+    elif analysis_mode == "real":
+        tr_ytd_result = error_result("inflation_incomplete", payload.tr_result.requested_range)
+        ru_ytd_result = error_result("inflation_incomplete", payload.ru_result.requested_range)
     else:
         tr_ytd_result = calculate_ytd_change(payload.tr_result, payload.tr_ytd_start)
         ru_ytd_result = calculate_ytd_change(payload.ru_result, payload.ru_ytd_start)
@@ -430,11 +447,18 @@ with st.sidebar:
         f"<p style='color: {COLORS['text_dark']}; font-weight: 600; margin-bottom: 0;'>{get_text('analysis_options', lang)}</p>",
         unsafe_allow_html=True,
     )
-    show_usd = st.checkbox(
-        get_text("show_usd", lang),
-        value=False,
-        help=get_text("show_usd_help", lang),
+    analysis_mode_options = {
+        get_text("mode_local", lang): "local",
+        get_text("mode_usd", lang): "usd",
+        get_text("mode_real", lang): "real",
+    }
+    selected_analysis_label = st.selectbox(
+        get_text("analysis_mode", lang),
+        options=list(analysis_mode_options.keys()),
+        index=0,
+        help=get_text("analysis_mode_help", lang),
     )
+    analysis_mode = cast(AnalysisMode, analysis_mode_options[selected_analysis_label])
 
     st.markdown("---")
     sector_info = SECTORS[selected_sector_id]
@@ -484,45 +508,78 @@ if not date_valid:
     st.stop()
 
 with st.spinner(get_text("fetching_data", lang)):
-    dashboard_data = load_dashboard_data(sector_data, start_date, end_date, show_usd)
+    dashboard_data = load_dashboard_data(sector_data, start_date, end_date, analysis_mode)
 
 render_source_status(dashboard_data.tr_result, sector_data["TR"], lang, "bist_live")
 render_source_status(dashboard_data.ru_result, sector_data["RU"], lang, "moex_live")
 
 if dashboard_data.tr_result.is_success and dashboard_data.ru_result.is_success:
-    render_general_overview(dashboard_data, sector_data, end_date, lang, show_usd=show_usd)
+    render_general_overview(dashboard_data, sector_data, end_date, lang, analysis_mode=analysis_mode)
     comparison_result = prepare_comparison_series(
         dashboard_data.tr_result,
         dashboard_data.ru_result,
         dashboard_data.usd_rates,
-        show_usd,
+        dashboard_data.inflation_window,
+        analysis_mode,
         DATA_CONFIG["min_data_points"],
     )
 
     if comparison_result.is_success:
-        if show_usd and comparison_result.is_complete:
+        if analysis_mode == "usd" and comparison_result.is_complete:
             render_banner(f"💵 {get_text('usd_conversion_active', lang)}", "success-banner")
-        elif comparison_result.effective_range is not None:
-            partial_key = "usd_conversion_partial" if show_usd else "comparison_window_partial"
+        elif (
+            analysis_mode == "real"
+            and dashboard_data.inflation_window.is_success
+            and dashboard_data.inflation_window.payload is not None
+            and comparison_result.is_complete
+        ):
+            base_month = dashboard_data.inflation_window.payload.shared_base_month.strftime("%m/%Y")
             render_banner(
-                get_text(
-                    partial_key,
-                    lang,
-                    start_date=comparison_result.effective_range.start.strftime("%d/%m/%Y"),
-                    end_date=comparison_result.effective_range.end.strftime("%d/%m/%Y"),
-                ),
+                f"🧮 {get_text('real_conversion_active', lang, base_month=base_month)}",
+                "success-banner",
+            )
+        elif comparison_result.effective_range is not None:
+            if analysis_mode == "usd":
+                partial_key = "usd_conversion_partial"
+            elif analysis_mode == "real":
+                partial_key = "real_conversion_partial"
+            else:
+                partial_key = "comparison_window_partial"
+
+            partial_kwargs = {
+                "start_date": comparison_result.effective_range.start.strftime("%d/%m/%Y"),
+                "end_date": comparison_result.effective_range.end.strftime("%d/%m/%Y"),
+            }
+            if (
+                analysis_mode == "real"
+                and dashboard_data.inflation_window.is_success
+                and dashboard_data.inflation_window.payload is not None
+            ):
+                partial_kwargs["base_month"] = dashboard_data.inflation_window.payload.shared_base_month.strftime("%m/%Y")
+
+            render_banner(
+                get_text(partial_key, lang, **partial_kwargs),
                 "warning-banner",
             )
 
     if not comparison_result.is_success:
-        if show_usd and comparison_result.error_code == "conversion_incomplete":
+        if analysis_mode == "usd" and comparison_result.error_code == "conversion_incomplete":
             render_banner(get_text("comparison_window_unavailable", lang), "warning-banner")
-        elif not show_usd and comparison_result.error_code == "insufficient_data":
+        elif analysis_mode == "usd":
+            show_error(cast(OperationResult[object], comparison_result), "FX", lang)
+        elif analysis_mode == "real" and comparison_result.error_code == "inflation_incomplete":
+            render_banner(get_text("real_conversion_unavailable", lang), "warning-banner")
+        elif analysis_mode == "local" and comparison_result.error_code == "insufficient_data":
             render_banner(get_text("comparison_window_unavailable_local", lang), "warning-banner")
     else:
         series_pair = comparison_result.payload
         if series_pair is None:
-            render_banner(get_text("comparison_window_unavailable", lang), "warning-banner")
+            fallback_key = "comparison_window_unavailable"
+            if analysis_mode == "local":
+                fallback_key = "comparison_window_unavailable_local"
+            if analysis_mode == "real":
+                fallback_key = "real_conversion_unavailable"
+            render_banner(get_text(fallback_key, lang), "warning-banner")
         else:
             render_current_metrics(series_pair, sector_data, lang)
             render_risk_metrics(series_pair, lang)

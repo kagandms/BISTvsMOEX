@@ -12,6 +12,7 @@ from typing import Generic, Literal, TypeVar
 import pandas as pd
 
 ResultStatus = Literal["success", "error"]
+AnalysisMode = Literal["local", "usd", "real"]
 ErrorCode = Literal[
     "timeout",
     "connection",
@@ -19,6 +20,7 @@ ErrorCode = Literal[
     "no_data",
     "insufficient_data",
     "conversion_incomplete",
+    "inflation_incomplete",
     "unsupported_window",
 ]
 
@@ -60,6 +62,15 @@ class FxRateWindow:
 
 
 @dataclass(frozen=True)
+class InflationWindow:
+    """Monthly CPI index payload used for real-return conversion."""
+
+    tr_cpi: pd.Series
+    ru_cpi: pd.Series
+    shared_base_month: pd.Timestamp
+
+
+@dataclass(frozen=True)
 class SeriesPair:
     """Prepared comparison series ready for UI rendering."""
 
@@ -81,6 +92,7 @@ class DashboardPayload:
     tr_ytd_start: OperationResult[Decimal]
     ru_ytd_start: OperationResult[Decimal]
     usd_rates: OperationResult[FxRateWindow]
+    inflation_window: OperationResult[InflationWindow]
 
 
 def build_date_range(start: date, end: date) -> DateRange:

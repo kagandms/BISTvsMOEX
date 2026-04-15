@@ -69,7 +69,7 @@ class TestAsyncData(unittest.IsolatedAsyncioTestCase):
         assert result.is_success
         assert result.payload == Decimal("120.0")
 
-    async def test_fetch_ytd_start_price_flags_late_baseline_as_incomplete(self) -> None:
+    async def test_fetch_ytd_start_price_accepts_first_available_january_session(self) -> None:
         from src.data import fetch_ytd_start_price
 
         expected = success_result(
@@ -86,4 +86,4 @@ class TestAsyncData(unittest.IsolatedAsyncioTestCase):
 
         assert result.is_success
         assert result.payload == Decimal("120.0")
-        assert not result.is_complete
+        assert result.is_complete

@@ -11,7 +11,13 @@ from unittest.mock import patch
 import pandas as pd
 
 from src.dashboard import calculate_ytd_change, prepare_comparison_series
-from src.models import FxRateWindow, build_date_range, error_result, success_result
+from src.models import (
+    FxRateWindow,
+    InflationWindow,
+    build_date_range,
+    error_result,
+    success_result,
+)
 
 
 def _build_price_result(
@@ -62,10 +68,33 @@ class TestDashboardRobustness:
             build_date_range(date(2024, 1, 1), date(2024, 1, 31)),
         )
 
-        result = prepare_comparison_series(tr_result, ru_result, fx_result, True, min_points=5)
+        result = prepare_comparison_series(
+            tr_result,
+            ru_result,
+            fx_result,
+            error_result("inflation_incomplete", None),
+            "usd",
+            min_points=5,
+        )
 
         assert result.status == "error"
         assert result.error_code == "conversion_incomplete"
+
+    def test_prepare_comparison_series_preserves_fx_fetch_error(self) -> None:
+        tr_result = _build_price_result([100, 101, 102, 103, 104], pd.date_range("2024-01-01", periods=5))
+        ru_result = _build_price_result([200, 201, 202, 203, 204], pd.date_range("2024-01-01", periods=5))
+
+        result = prepare_comparison_series(
+            tr_result,
+            ru_result,
+            error_result("timeout", build_date_range(date(2024, 1, 1), date(2024, 1, 31))),
+            error_result("inflation_incomplete", None),
+            "usd",
+            min_points=5,
+        )
+
+        assert result.status == "error"
+        assert result.error_code == "timeout"
 
     def test_prepare_comparison_series_local_mode_aligns_to_shared_window(self) -> None:
         tr_result = _build_price_result([100, 101, 102, 103, 104], pd.date_range("2024-01-01", periods=5))
@@ -75,7 +104,8 @@ class TestDashboardRobustness:
             tr_result,
             ru_result,
             error_result("conversion_incomplete", None),
-            False,
+            error_result("inflation_incomplete", None),
+            "local",
             min_points=4,
         )
 
@@ -86,6 +116,37 @@ class TestDashboardRobustness:
         assert result.payload.ru_series.index.min().date() == date(2024, 1, 2)
         assert len(result.payload.tr_series) == 4
         assert len(result.payload.ru_series) == 4
+
+    def test_prepare_comparison_series_uses_only_exact_shared_dates(self) -> None:
+        tr_result = _build_price_result(
+            [100, 101, 102],
+            pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-05"]),
+        )
+        ru_result = _build_price_result([200, 201, 202, 203, 204], pd.date_range("2024-01-01", periods=5))
+
+        result = prepare_comparison_series(
+            tr_result,
+            ru_result,
+            error_result("conversion_incomplete", None),
+            error_result("inflation_incomplete", None),
+            "local",
+            min_points=3,
+        )
+
+        assert result.is_success
+        assert result.payload is not None
+        assert result.payload.tr_series.index.tolist() == [
+            pd.Timestamp("2024-01-01"),
+            pd.Timestamp("2024-01-02"),
+            pd.Timestamp("2024-01-05"),
+        ]
+        assert result.payload.ru_series.index.tolist() == [
+            pd.Timestamp("2024-01-01"),
+            pd.Timestamp("2024-01-02"),
+            pd.Timestamp("2024-01-05"),
+        ]
+        assert len(result.payload.tr_series) == 3
+        assert len(result.payload.ru_series) == 3
 
     def test_prepare_comparison_series_allows_partial_but_safe_overlap(self) -> None:
         tr_result = _build_price_result([100, 101, 102, 103, 104], pd.date_range("2024-01-01", periods=5))
@@ -101,13 +162,52 @@ class TestDashboardRobustness:
             build_date_range(date(2024, 1, 1), date(2024, 1, 31)),
         )
 
-        result = prepare_comparison_series(tr_result, ru_result, fx_result, True, min_points=4)
+        result = prepare_comparison_series(
+            tr_result,
+            ru_result,
+            fx_result,
+            error_result("inflation_incomplete", None),
+            "usd",
+            min_points=4,
+        )
 
         assert result.is_success
         assert result.payload is not None
         assert not result.is_complete
         assert len(result.payload.tr_series) == 4
         assert result.effective_range == build_date_range(date(2024, 1, 2), date(2024, 1, 5))
+
+    def test_prepare_comparison_series_real_mode_limits_to_cpi_covered_window(self) -> None:
+        tr_result = _build_price_result([100, 102, 104], pd.to_datetime(["2025-12-10", "2026-01-10", "2026-02-10"]))
+        ru_result = _build_price_result([200, 201, 202], pd.to_datetime(["2025-12-10", "2026-01-10", "2026-02-10"]))
+        inflation_payload = InflationWindow(
+            tr_cpi=pd.Series([101.0, 103.0], index=pd.to_datetime(["2025-12-01", "2026-01-01"])),
+            ru_cpi=pd.Series([110.0, 111.0], index=pd.to_datetime(["2025-12-01", "2026-01-01"])),
+            shared_base_month=pd.Timestamp("2026-01-01"),
+        )
+        inflation_result = success_result(
+            inflation_payload,
+            build_date_range(date(2025, 12, 1), date(2026, 2, 28)),
+            build_date_range(date(2025, 12, 1), date(2026, 1, 31)),
+            is_complete=False,
+        )
+
+        result = prepare_comparison_series(
+            tr_result,
+            ru_result,
+            error_result("conversion_incomplete", None),
+            inflation_result,
+            "real",
+            min_points=2,
+        )
+
+        assert result.is_success
+        assert result.payload is not None
+        assert result.payload.tr_series.index.tolist() == [
+            pd.Timestamp("2025-12-10"),
+            pd.Timestamp("2026-01-10"),
+        ]
+        assert result.effective_range == build_date_range(date(2025, 12, 10), date(2026, 1, 10))
 
     def test_market_cap_missing_stays_unavailable(self) -> None:
         from src.data import fetch_market_cap_async

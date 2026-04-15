@@ -13,6 +13,7 @@ from curl_cffi import requests as curl_requests
 
 from src.data import (
     _fetch_moex_iss_candles,
+    fetch_inflation_window,
     fetch_moex_iss_data,
     fetch_stock_data,
     fetch_usd_rates,
@@ -232,3 +233,21 @@ class TestFetchUsdRates:
         assert first_result.error_code == "schema_error"
         assert second_result.is_success
         assert mock_history.call_count == 4
+
+
+class TestFetchInflationWindow:
+    """Tests for curated inflation coverage."""
+
+    def test_recent_window_returns_shared_cpi_base_month(self) -> None:
+        result = fetch_inflation_window(date(2025, 12, 1), date(2026, 3, 15))
+
+        assert result.is_success
+        assert result.payload is not None
+        assert result.payload.shared_base_month == pd.Timestamp("2026-02-01")
+        assert not result.is_complete
+
+    def test_window_before_snapshot_fails_closed(self) -> None:
+        result = fetch_inflation_window(date(2024, 1, 1), date(2024, 2, 1))
+
+        assert result.status == "error"
+        assert result.error_code == "inflation_incomplete"

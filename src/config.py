@@ -70,6 +70,7 @@ CACHE_CONFIG = CONFIG["cache"]
 APP_CONFIG = CONFIG["app"]
 MARKET_CAPS = CONFIG.get("market_caps", {})
 MARKET_CAP_METADATA = CONFIG.get("market_cap_metadata", {})
+INFLATION_CONFIG = CONFIG.get("inflation_adjustment", {})
 
 # Macro economic events for chart annotations
 MACRO_EVENTS = CONFIG.get("macro_events", [])
@@ -89,7 +90,7 @@ TRANSLATIONS = {
         "current_pair": "CURRENT PAIR",
         "turkey": "Turkey",
         "russia": "Russia",
-        "data_source": "Data: Yahoo Finance & MOEX ISS API",
+        "data_source": "Data: Yahoo Finance, MOEX ISS API & curated CPI snapshots",
         "built_with": "Built with Streamlit",
         "current_metrics": "📈 Current Metrics",
         "tr_period_change": "TR Period Change",
@@ -117,6 +118,7 @@ TRANSLATIONS = {
         "error_insufficient": "⚠️ Insufficient data points for {ticker} to perform analysis.",
         "error_unsupported_window": "⚠️ The selected date range is unsupported.",
         "error_conversion_incomplete": "⚠️ USD comparison is unavailable because both FX series did not cover the selected window safely.",
+        "error_inflation_incomplete": "⚠️ Real comparison is unavailable because CPI coverage did not safely cover the selected window.",
         "data_unavailable": "⚠️ Data unavailable for {ticker}. Try selecting an earlier end date (MOEX data has 1-2 day delay).",
         "date_adjusted": "⚠️ Using data until {actual_date} (selected: {requested_date}) - latest available data",
         "moex_live": "✅ Live data from MOEX ISS API",
@@ -136,6 +138,11 @@ TRANSLATIONS = {
         "language": "🌐 Language",
         "start_price_label": "Start: {currency}{price} ({date})",
         "date_error": "⚠️ Start date must be before end date. Please adjust the date range.",
+        "analysis_mode": "Comparison Mode",
+        "analysis_mode_help": "Choose whether to compare nominal local prices, USD-converted prices, or CPI-adjusted real prices.",
+        "mode_local": "Local Currency",
+        "mode_usd": "USD",
+        "mode_real": "Real (CPI-adjusted)",
         # Sector names
         "sector_aviation": "Aviation",
         "sector_energy": "Energy",
@@ -176,6 +183,9 @@ TRANSLATIONS = {
         "usd_conversion_active": "USD Conversion Active - All values in USD",
         "general_overview": "General Overview",
         "usd_conversion_unavailable": "USD conversion unavailable because one or more FX series could not be loaded. Local currency view is shown instead.",
+        "real_conversion_active": "Real mode active - Values are shown in {base_month} purchasing power.",
+        "real_conversion_partial": "⚠️ Real comparison is limited to the CPI-covered window: {start_date} - {end_date} ({base_month} purchasing power).",
+        "real_conversion_unavailable": "⚠️ Real comparison is unavailable because the curated CPI snapshot does not fully cover the selected window.",
         "market_cap_comparison": "Market Cap Comparison",
         "market_cap_source_note": "Source: curated snapshot from config.yaml (as of {as_of}).",
         "market_cap_snapshot_disclaimer": "Snapshot-based values support presentation consistency and may differ from live exchange values.",
@@ -189,7 +199,8 @@ TRANSLATIONS = {
         "methodology_point_2": "MOEX data can lag the selected end date by 1-2 trading days.",
         "methodology_point_3": "USD mode aligns FX series to trading days and forward-fills missing exchange-rate observations.",
         "methodology_point_4": "The comparison chart rebases each asset to 100 on the first available point in the analysis window.",
-        "methodology_point_5": "Correlation is calculated on daily returns, while market-cap values use a curated snapshot for presentation consistency.",
+        "methodology_point_5": "Real mode deflates daily prices with curated monthly CPI change snapshots and uses the latest shared published month as the purchasing-power anchor.",
+        "methodology_point_6": "Correlation is calculated on daily returns, while market-cap values use a curated snapshot for presentation consistency.",
     },
     "tr": {
         "app_title": "🌉 Avrasya Köprüsü",
@@ -204,7 +215,7 @@ TRANSLATIONS = {
         "current_pair": "MEVCUT ÇİFT",
         "turkey": "Türkiye",
         "russia": "Rusya",
-        "data_source": "Veri: Yahoo Finance & MOEX ISS API",
+        "data_source": "Veri: Yahoo Finance, MOEX ISS API ve kürasyonlu TÜFE snapshot'ları",
         "built_with": "Streamlit ile geliştirilmiştir",
         "current_metrics": "📈 Güncel Metrikler",
         "tr_period_change": "TR Dönem Değişimi",
@@ -232,6 +243,7 @@ TRANSLATIONS = {
         "error_insufficient": "⚠️ {ticker} için analiz yapmaya yetecek kadar veri yok.",
         "error_unsupported_window": "⚠️ Seçilen tarih aralığı desteklenmiyor.",
         "error_conversion_incomplete": "⚠️ Her iki kur serisi seçilen pencereyi güvenli biçimde kapsamadığı için USD karşılaştırması kullanılamıyor.",
+        "error_inflation_incomplete": "⚠️ Reel karşılaştırma, TÜFE kapsamı seçilen pencereyi güvenli biçimde kapsamadığı için kullanılamıyor.",
         "data_unavailable": "⚠️ {ticker} için veri mevcut değil. Daha erken bir bitiş tarihi seçin (MOEX verileri 1-2 gün gecikmeli gelir).",
         "date_adjusted": "⚠️ {actual_date} tarihine kadar veri kullanılıyor (seçili: {requested_date}) - mevcut en son veri",
         "moex_live": "✅ MOEX ISS API'den canlı veri",
@@ -251,6 +263,11 @@ TRANSLATIONS = {
         "language": "🌐 Dil",
         "start_price_label": "Başlangıç: {currency}{price} ({date})",
         "date_error": "⚠️ Başlangıç tarihi bitiş tarihinden önce olmalıdır. Lütfen tarih aralığını düzeltin.",
+        "analysis_mode": "Karşılaştırma Modu",
+        "analysis_mode_help": "Nominal yerel fiyat, USD dönüşümü veya TÜFE ile düzeltilmiş reel fiyat karşılaştırması seçin.",
+        "mode_local": "Yerel Para Birimi",
+        "mode_usd": "USD",
+        "mode_real": "Reel (TÜFE düzeltilmiş)",
         # Sector names
         "sector_aviation": "Havacılık",
         "sector_energy": "Enerji",
@@ -291,6 +308,9 @@ TRANSLATIONS = {
         "usd_conversion_active": "USD Dönüşümü Aktif - Tüm değerler USD cinsinden",
         "general_overview": "Genel Bakış",
         "usd_conversion_unavailable": "Bir veya daha fazla döviz kuru serisi yüklenemediği için USD dönüşümü uygulanamadı. Yerel para birimi görünümü gösteriliyor.",
+        "real_conversion_active": "Reel mod aktif - Değerler {base_month} satın alma gücüyle gösteriliyor.",
+        "real_conversion_partial": "⚠️ Reel karşılaştırma, TÜFE kapsamlı pencereyle sınırlandı: {start_date} - {end_date} ({base_month} satın alma gücü).",
+        "real_conversion_unavailable": "⚠️ Reel karşılaştırma, kürasyonlu TÜFE snapshot'ı seçilen pencereyi tam kapsamadığı için kullanılamıyor.",
         "market_cap_comparison": "Piyasa Değeri Karşılaştırması",
         "market_cap_source_note": "Kaynak: config.yaml içindeki kürasyonlu snapshot ({as_of} itibarıyla).",
         "market_cap_snapshot_disclaimer": "Snapshot tabanlı değerler sunum tutarlılığı için kullanılır; canlı borsa verilerinden farklı olabilir.",
@@ -304,7 +324,8 @@ TRANSLATIONS = {
         "methodology_point_2": "MOEX verisi seçilen bitiş tarihini 1-2 işlem günü gecikmeli yansıtabilir.",
         "methodology_point_3": "USD modu, kur serilerini işlem günlerine hizalar ve eksik kur gözlemlerini ileri taşıyarak doldurur.",
         "methodology_point_4": "Karşılaştırma grafiği, analiz penceresindeki ilk uygun noktada her varlığı 100 bazına endeksler.",
-        "methodology_point_5": "Korelasyon günlük getiriler üzerinden hesaplanır; piyasa değeri verileri ise sunum tutarlılığı için snapshot kullanır.",
+        "methodology_point_5": "Reel mod, günlük fiyatları kürasyonlu aylık TÜFE değişim snapshot'larıyla deflate eder ve son ortak yayımlanmış ayı satın alma gücü çıpası olarak kullanır.",
+        "methodology_point_6": "Korelasyon günlük getiriler üzerinden hesaplanır; piyasa değeri verileri ise sunum tutarlılığı için snapshot kullanır.",
     },
     "ru": {
         "app_title": "🌉 Евразийский Мост",
@@ -319,7 +340,7 @@ TRANSLATIONS = {
         "current_pair": "ТЕКУЩАЯ ПАРА",
         "turkey": "Турция",
         "russia": "Россия",
-        "data_source": "Данные: Yahoo Finance & MOEX ISS API",
+        "data_source": "Данные: Yahoo Finance, MOEX ISS API и подготовленные CPI snapshots",
         "built_with": "Создано с помощью Streamlit",
         "current_metrics": "📈 Текущие Показатели",
         "tr_period_change": "Изменение TR за период",
@@ -348,6 +369,7 @@ TRANSLATIONS = {
         "error_insufficient": "⚠️ Недостаточно данных по {ticker} для анализа.",
         "error_unsupported_window": "⚠️ Выбранный диапазон дат не поддерживается.",
         "error_conversion_incomplete": "⚠️ Сравнение в USD недоступно, потому что оба валютных ряда не покрыли окно безопасным образом.",
+        "error_inflation_incomplete": "⚠️ Реальное сравнение недоступно, потому что покрытие CPI не охватило выбранное окно безопасным образом.",
         "data_unavailable": "⚠️ Данные недоступны для {ticker}. Выберите более раннюю дату окончания (данные MOEX имеют задержку 1-2 дня).",
         "date_adjusted": "⚠️ Используются данные до {actual_date} (выбрано: {requested_date}) - последние доступные данные",
         "moex_live": "✅ Живые данные из MOEX ISS API",
@@ -367,6 +389,11 @@ TRANSLATIONS = {
         "language": "🌐 Язык",
         "start_price_label": "Начало: {currency}{price} ({date})",
         "date_error": "⚠️ Дата начала должна быть раньше даты окончания. Пожалуйста, измените диапазон дат.",
+        "analysis_mode": "Режим Сравнения",
+        "analysis_mode_help": "Выберите сравнение в локальной валюте, в USD или в реальных ценах с поправкой на CPI.",
+        "mode_local": "Локальная Валюта",
+        "mode_usd": "USD",
+        "mode_real": "Реальные (CPI-adjusted)",
         # Sector names
         "sector_aviation": "Авиация",
         "sector_energy": "Энергетика",
@@ -406,6 +433,9 @@ TRANSLATIONS = {
         "show_usd_help": "Конвертировать цены в USD для справедливого сравнения (с учетом инфляции)",
         "usd_conversion_active": "Конвертация в USD активна - Все значения в USD",
         "usd_conversion_unavailable": "Конвертация в USD недоступна, потому что не удалось загрузить один или несколько валютных рядов. Вместо этого показаны локальные валюты.",
+        "real_conversion_active": "Реальный режим активен - значения показаны в покупательной способности {base_month}.",
+        "real_conversion_partial": "⚠️ Реальное сравнение ограничено окном с покрытием CPI: {start_date} - {end_date} (покупательная способность {base_month}).",
+        "real_conversion_unavailable": "⚠️ Реальное сравнение недоступно, потому что подготовленный CPI snapshot не покрывает выбранное окно полностью.",
         "market_cap_comparison": "Сравнение Рыночной Капитализации",
         "market_cap_source_note": "Источник: подготовленный snapshot из config.yaml (по состоянию на {as_of}).",
         "market_cap_snapshot_disclaimer": "Значения snapshot используются для консистентной презентации и могут отличаться от живых биржевых значений.",
@@ -419,7 +449,8 @@ TRANSLATIONS = {
         "methodology_point_2": "Данные MOEX могут отставать от выбранной конечной даты на 1-2 торговых дня.",
         "methodology_point_3": "В режиме USD валютные ряды выравниваются по торговым дням, а пропуски курсов заполняются предыдущими значениями.",
         "methodology_point_4": "Сравнительный график переводит каждый актив к базе 100 в первой доступной точке анализируемого окна.",
-        "methodology_point_5": "Корреляция считается по дневной доходности, а значения капитализации берутся из snapshot для консистентной презентации.",
+        "methodology_point_5": "Реальный режим дефлирует дневные цены с помощью подготовленных месячных snapshot'ов изменения CPI и использует последний общий опубликованный месяц как якорь покупательной способности.",
+        "methodology_point_6": "Корреляция считается по дневной доходности, а значения капитализации берутся из snapshot для консистентной презентации.",
     }
 }
 
