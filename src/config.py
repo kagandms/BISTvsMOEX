@@ -15,13 +15,86 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+_MIN_TIMEOUT_SECONDS = 1
+_MAX_TIMEOUT_SECONDS = 120
+_MIN_MOEX_DELAY_DAYS = 1
+_MAX_MOEX_DELAY_DAYS = 14
+_DEFAULT_SENTRY_TRACES_SAMPLE_RATE = 0.1
 
-def load_config() -> dict:
+
+def _read_bounded_int_env(
+    env_name: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int | None:
+    """Return a validated integer environment override."""
+
+    raw_value = os.environ.get(env_name)
+    if raw_value is None:
+        return None
+
+    try:
+        parsed_value = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Ignoring invalid %s value %r; expected an integer.",
+            env_name,
+            raw_value,
+        )
+        return None
+
+    if parsed_value < minimum or parsed_value > maximum:
+        logger.warning(
+            "Ignoring invalid %s value %r; expected an integer in [%d, %d].",
+            env_name,
+            raw_value,
+            minimum,
+            maximum,
+        )
+        return None
+
+    return parsed_value
+
+
+def get_sentry_traces_sample_rate(
+    default: float = _DEFAULT_SENTRY_TRACES_SAMPLE_RATE,
+) -> float:
+    """Return a validated Sentry trace sample rate."""
+
+    env_name = "BM_SENTRY_TRACE_SAMPLE_RATE"
+    raw_value = os.environ.get(env_name)
+    if raw_value is None:
+        return default
+
+    try:
+        sample_rate = float(raw_value)
+    except ValueError:
+        logger.warning(
+            "Ignoring invalid %s value %r; expected a float in [0.0, 1.0].",
+            env_name,
+            raw_value,
+        )
+        return default
+
+    if sample_rate < 0 or sample_rate > 1:
+        logger.warning(
+            "Ignoring invalid %s value %r; expected a float in [0.0, 1.0].",
+            env_name,
+            raw_value,
+        )
+        return default
+
+    return sample_rate
+
+
+def load_config() -> dict[str, Any]:
     """Load configuration from config.yaml file and apply environment overrides."""
+
     config_path = Path(__file__).parent.parent / "config.yaml"
     if not config_path.exists():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
-    
+
     with open(config_path, "r", encoding="utf-8") as f:
         try:
             config = yaml.safe_load(f)
@@ -36,24 +109,21 @@ def load_config() -> dict:
             f"got {type(config).__name__}"
         )
 
-    # Apply environment variable overrides (Security hardening)
-    # BM_TIMEOUT -> api.moex_iss.timeout_seconds
-    if "BM_TIMEOUT" in os.environ:
-        try:
-            timeout = int(os.environ["BM_TIMEOUT"])
-            if "api" in config and "moex_iss" in config["api"]:
-                config["api"]["moex_iss"]["timeout_seconds"] = timeout
-        except ValueError:
-            pass  # Invalid env var, ignore
+    timeout = _read_bounded_int_env(
+        "BM_TIMEOUT",
+        minimum=_MIN_TIMEOUT_SECONDS,
+        maximum=_MAX_TIMEOUT_SECONDS,
+    )
+    if timeout is not None and "api" in config and "moex_iss" in config["api"]:
+        config["api"]["moex_iss"]["timeout_seconds"] = timeout
 
-    # BM_MOEX_DELAY -> data.moex_delay_days
-    if "BM_MOEX_DELAY" in os.environ:
-        try:
-            delay = int(os.environ["BM_MOEX_DELAY"])
-            if "data" in config:
-                config["data"]["moex_delay_days"] = delay
-        except ValueError:
-            pass
+    delay = _read_bounded_int_env(
+        "BM_MOEX_DELAY",
+        minimum=_MIN_MOEX_DELAY_DAYS,
+        maximum=_MAX_MOEX_DELAY_DAYS,
+    )
+    if delay is not None and "data" in config:
+        config["data"]["moex_delay_days"] = delay
 
     return config
 
