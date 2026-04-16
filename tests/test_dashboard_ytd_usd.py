@@ -108,6 +108,17 @@ class TestCalculateYtdChangeUsd:
         assert not result.is_success
         assert result.error_code == "conversion_incomplete"
 
+    def test_returns_conversion_incomplete_when_latest_price_date_has_no_fx_coverage(self) -> None:
+        """Latest price must not be converted with a stale FX observation."""
+        prices = _make_price_result([100.0, 120.0], start="2025-01-02")
+        baseline = _make_baseline_result(90.0)
+        fx = _make_fx_rates(try_rates=[9.0, 10.0], start="2025-01-01")
+
+        result = calculate_ytd_change_usd(prices, baseline, "TRY", fx)
+
+        assert not result.is_success
+        assert result.error_code == "conversion_incomplete"
+
     def test_error_when_price_result_failed(self) -> None:
         """Returns error when the price result itself is an error."""
         rng = DateRange(start=pd.Timestamp("2025-01-01").date(), end=pd.Timestamp("2025-01-31").date())

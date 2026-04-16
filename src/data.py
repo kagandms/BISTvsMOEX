@@ -218,7 +218,7 @@ def convert_to_usd(
     currency_code: str,
     usd_rates: FxRateWindow,
 ) -> pd.Series:
-    """Convert a local-currency series to USD using the matching FX series."""
+    """Convert a local-currency series to USD using exact shared FX dates only."""
 
     target_rate_df = None
     if currency_code == "TRY":
@@ -229,20 +229,22 @@ def convert_to_usd(
     if target_rate_df is None or prices.empty:
         return prices.iloc[0:0]
 
-    rate_col = target_rate_df.columns[0]
-    aligned_rates = target_rate_df.reindex(prices.index, method="ffill")
-    aligned = prices.to_frame("price").join(aligned_rates, how="left")
-    aligned = aligned.dropna(subset=[rate_col])
-    if aligned.empty:
-        return prices.iloc[0:0]
+    clean_prices = _sanitize_numeric_series(prices)
+    if clean_prices.empty or target_rate_df.empty:
+        return clean_prices.iloc[0:0]
 
-    # Yüksek performanslı dönüşüm (iterrows yerine zip ve ndarray kullanımı)
+    rate_col = target_rate_df.columns[0]
+    clean_rates = _sanitize_numeric_series(target_rate_df[rate_col]).rename(rate_col)
+    aligned = clean_prices.rename("price").to_frame().join(clean_rates.to_frame(), how="inner")
+    if aligned.empty:
+        return clean_prices.iloc[0:0]
+
     prices_arr = aligned["price"].astype(str).values
     rates_arr = aligned[rate_col].astype(str).values
-    
+
     converted: list[Decimal] = []
     converted_index: list[pd.Timestamp] = []
-    
+
     for idx, p_str, r_str in zip(aligned.index, prices_arr, rates_arr, strict=True):
         try:
             price_value = Decimal(p_str)

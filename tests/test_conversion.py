@@ -67,6 +67,22 @@ class TestConvertToUsd:
 
         assert result.empty
 
+    def test_missing_trailing_fx_observation_does_not_forward_fill_latest_price(self) -> None:
+        price_dates = pd.date_range("2024-01-01", periods=3)
+        prices = pd.Series([100.0, 120.0, 150.0], index=price_dates, name="price")
+        rates = FxRateWindow(
+            usd_try=pd.DataFrame({"USD_TRY": [10.0, 12.0]}, index=price_dates[:2]),
+            usd_rub=None,
+        )
+
+        result = convert_to_usd(prices, "TRY", rates)
+
+        assert result.index.tolist() == [
+            pd.Timestamp("2024-01-01"),
+            pd.Timestamp("2024-01-02"),
+        ]
+        assert result.iloc[-1] == Decimal("10")
+
 
 class TestConvertToReal:
     """Tests for convert_to_real."""

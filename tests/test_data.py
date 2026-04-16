@@ -243,7 +243,17 @@ class TestFetchInflationWindow:
 
         assert result.is_success
         assert result.payload is not None
-        assert result.payload.shared_base_month == pd.Timestamp("2026-02-01")
+        assert result.payload.shared_base_month == pd.Timestamp("2026-03-01")
+        assert result.is_complete
+
+    def test_window_past_latest_shared_month_returns_partial_real_coverage(self) -> None:
+        result = fetch_inflation_window(date(2025, 12, 1), date(2026, 4, 15))
+
+        assert result.is_success
+        assert result.payload is not None
+        assert result.payload.shared_base_month == pd.Timestamp("2026-03-01")
+        assert result.effective_range is not None
+        assert result.effective_range.end == date(2026, 3, 31)
         assert not result.is_complete
 
     def test_window_before_snapshot_fails_closed(self) -> None:

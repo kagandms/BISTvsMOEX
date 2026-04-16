@@ -78,7 +78,7 @@ market_caps:
 # TR series: TCMB/TURKSTAT consumer price releases
 # RU series: Rosstat CPI releases
 inflation_adjustment:
-  latest_shared_month: "2026-02"
+  latest_shared_month: "2026-03"
   monthly_change_pct:
     TR:
       "2025-03": 2.46
@@ -93,6 +93,7 @@ inflation_adjustment:
       "2025-12": 0.89
       "2026-01": 4.84
       "2026-02": 2.96
+      "2026-03": 1.94
     RU:
       "2025-03": 0.65
       "2025-04": 0.90
@@ -106,6 +107,7 @@ inflation_adjustment:
       "2025-12": 0.32
       "2026-01": 1.62
       "2026-02": 0.73
+      "2026-03": 0.60
 
 # Color palette - Institutional Finance theme
 colors:

@@ -238,11 +238,16 @@ def calculate_ytd_change_usd(
 
     usd_baseline = converted_baseline_series.iloc[0]
 
-    usd_series = convert_to_usd(price_result.payload, currency_code, fx_rates)
-    if usd_series.empty or len(usd_series) < 2:
+    latest_price_date = pd.Timestamp(price_result.payload.index[-1])
+    latest_price_series = pd.Series(
+        [price_result.payload.iloc[-1]],
+        index=[latest_price_date],
+    )
+    converted_current_series = convert_to_usd(latest_price_series, currency_code, fx_rates)
+    if converted_current_series.empty:
         return error_result("conversion_incomplete", requested_range)
 
-    usd_current = usd_series.iloc[-1]
+    usd_current = converted_current_series.iloc[0]
 
     try:
         baseline_dec = Decimal(str(float(usd_baseline)))

@@ -30,6 +30,7 @@ from src.config import (
     SECTORS,
     get_macro_events_in_range,
     get_sector_options,
+    get_sentry_traces_sample_rate,
     get_text,
 )
 from src.dashboard import (
@@ -63,11 +64,15 @@ logging.basicConfig(
 if "SENTRY_DSN" in os.environ:
     import sentry_sdk
 
+    trace_sample_rate = get_sentry_traces_sample_rate()
     sentry_sdk.init(
         dsn=os.environ["SENTRY_DSN"],
-        traces_sample_rate=1.0,
+        traces_sample_rate=trace_sample_rate,
     )
-    logging.info("Sentry APM initialized.")
+    logging.info(
+        "Sentry APM initialized with traces_sample_rate=%s.",
+        trace_sample_rate,
+    )
 
 
 def build_market_cap_source_note(lang: str) -> str:

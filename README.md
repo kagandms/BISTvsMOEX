@@ -17,7 +17,8 @@ This application compares BIST and MOEX equities through a single Streamlit inte
 - **BIST source:** [Yahoo Finance](https://finance.yahoo.com/)
 - **MOEX source:** [MOEX ISS API](https://iss.moex.com/)
 - **FX conversion:** Yahoo Finance FX series aligned to the shared trading window
-- **Market-cap comparison:** curated snapshot from `config.yaml`
+- **Real-return comparison:** curated monthly CPI snapshot from `config.yaml`
+- **Market-cap comparison:** curated snapshot from `config.yaml` rather than a live provider feed
 
 ## Architecture
 
@@ -40,18 +41,19 @@ BistvsMoex/
 ## Runtime Installation
 
 ```bash
-python -m venv venv
+python3.13 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
 The app opens at [http://localhost:8501](http://localhost:8501).
+Supported baseline: **Python 3.13**.
 
 ## Development / CI Installation
 
 ```bash
-python -m venv venv
+python3.13 -m venv venv
 source venv/bin/activate
 pip install -r requirements-dev.txt
 ```
@@ -97,8 +99,9 @@ Supported application overrides:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `BM_TIMEOUT` | Upstream request timeout in seconds | `15` |
-| `BM_MOEX_DELAY` | Expected MOEX publication lag in days | `2` |
+| `BM_TIMEOUT` | Upstream request timeout in seconds. Allowed range: `1-120`. | `15` |
+| `BM_MOEX_DELAY` | Expected MOEX publication lag in days. Allowed range: `1-14`. | `2` |
+| `BM_SENTRY_TRACE_SAMPLE_RATE` | Optional Sentry trace sampling rate. Allowed range: `0.0-1.0`. | `0.1` |
 | `PORT` | Streamlit server port in Docker/server mode | `8501` |
 
 ## Manual Diagnostics
@@ -118,6 +121,9 @@ python scripts/verify_data_integrity.py
 - Invalid or unsupported windows are rejected explicitly.
 - YTD is tied to the selected end-year, not the machine’s current year.
 - USD comparison uses only the shared FX-covered overlap.
+- Real comparison uses the curated shared CPI window and stops at the latest safely covered month instead of extrapolating unpublished inflation data.
+- The current curated CPI coverage in `config.yaml` ends at **2026-03**, so later end dates surface a partial/unavailable real-return state by design.
+- Market-cap cards use the curated snapshot date declared in `config.yaml`; they should be treated as reference metadata, not live quotes.
 - Unsafe comparisons fail closed and render an unavailable state instead of `NaN`, `0.0`, or raw upstream errors.
 
 ## Disclaimer
