@@ -20,6 +20,19 @@ This application compares BIST and MOEX equities through a single Streamlit inte
 - **Real-return comparison:** curated monthly CPI snapshot from `config.yaml`
 - **Market-cap comparison:** curated snapshot from `config.yaml` rather than a live provider feed
 
+Curated snapshot metadata, source URLs, coverage, and methodology notes are declared in
+`config.yaml`. Snapshot values are intentionally separated from live providers so the
+dashboard can fail closed instead of mixing live prices with stale reference data.
+
+## Snapshot Governance
+
+Curated values are treated as reproducible reference data, not live quotes:
+
+- market-cap values are stored in USD billions, rounded to one decimal place, and timestamped in `market_cap_metadata`,
+- CPI values are official month-over-month rates compounded into a local CPI index at runtime,
+- the snapshot source links and access date are versioned in `config.yaml`,
+- numerical claims should be refreshed before a new public release or LinkedIn post that emphasizes current valuations.
+
 ## Architecture
 
 ```text
@@ -40,6 +53,11 @@ BistvsMoex/
 
 ## Runtime Installation
 
+This project is tested with **Python 3.13.9**. Any Python 3.13 patch release should work.
+If your machine does not expose a `python3.13` command, install Python 3.13 with your
+preferred version manager (`pyenv`, `uv`, Homebrew, or the official installer), or use
+the Docker path below.
+
 ```bash
 python3.13 -m venv venv
 source venv/bin/activate
@@ -49,6 +67,12 @@ streamlit run app.py
 
 The app opens at [http://localhost:8501](http://localhost:8501).
 Supported baseline: **Python 3.13**.
+
+Quick interpreter check:
+
+```bash
+python3.13 --version
+```
 
 ## Development / CI Installation
 
@@ -124,7 +148,12 @@ python scripts/verify_data_integrity.py
 - Real comparison uses the curated shared CPI window and stops at the latest safely covered month instead of extrapolating unpublished inflation data.
 - The current curated CPI coverage in `config.yaml` ends at **2026-03**, so later end dates surface a partial/unavailable real-return state by design.
 - Market-cap cards use the curated snapshot date declared in `config.yaml`; they should be treated as reference metadata, not live quotes.
+- Curated CPI and market-cap snapshots include source metadata in `config.yaml`; refresh them before publishing updated numerical claims.
 - Unsafe comparisons fail closed and render an unavailable state instead of `NaN`, `0.0`, or raw upstream errors.
+
+## License
+
+Licensed under the MIT License. See `LICENSE` for details.
 
 ## Disclaimer
 

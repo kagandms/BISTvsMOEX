@@ -60,6 +60,16 @@ sectors:
 # Updated: Feb 2026
 market_cap_metadata:
   as_of: "2026-02-01"
+  accessed_on: "2026-04-25"
+  unit: "USD billions"
+  methodology: >
+    Manual public-reference snapshot normalized to USD billions and rounded to one
+    decimal place. Values are used only as dashboard context, not as live valuation
+    data. Refresh this block before publishing updated numerical claims.
+  source_urls:
+    yahoo_finance_quotes: "https://finance.yahoo.com/"
+    moex_iss_interface: "https://www.moex.com/a2920"
+    moex_iss_endpoint_root: "https://iss.moex.com/"
 
 market_caps:
   THYAO.IS: 14.5
@@ -79,6 +89,19 @@ market_caps:
 # RU series: Rosstat CPI releases
 inflation_adjustment:
   latest_shared_month: "2026-03"
+  coverage_start_month: "2025-03"
+  accessed_on: "2026-04-25"
+  methodology: >
+    Monthly CPI percentage changes are stored as official month-over-month rates
+    and compounded into a local CPI index at runtime. Real-return mode uses only
+    the latest shared month available for both countries and does not extrapolate
+    missing future inflation.
+  source_urls:
+    TR:
+      - "https://www.tcmb.gov.tr/wps/wcm/connect/EN/TCMB%20EN/Main%20Menu/Statistics/Inflation%20Data/Consumer%20Prices"
+      - "https://www.tcmb.gov.tr/wps/wcm/connect/7d680381-0da0-4656-88a2-fa37657043d5/mpricemarch26.pdf?CACHEID=ROOTWORKSPACE-7d680381-0da0-4656-88a2-fa37657043d5-pS6ieK9&MOD=AJPERES"
+    RU:
+      - "https://rosstat.gov.ru/central-news/document/281267"
   monthly_change_pct:
     TR:
       "2025-03": 2.46
