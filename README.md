@@ -58,15 +58,23 @@ If your machine does not expose a `python3.13` command, install Python 3.13 with
 preferred version manager (`pyenv`, `uv`, Homebrew, or the official installer), or use
 the Docker path below.
 
+Recommended local setup:
+
 ```bash
 python3.13 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+./run.sh
 ```
 
 The app opens at [http://localhost:8501](http://localhost:8501).
 Supported baseline: **Python 3.13**.
+
+If port `8501` is already in use, choose another port:
+
+```bash
+PORT=8502 ./run.sh
+```
 
 Quick interpreter check:
 
@@ -101,6 +109,8 @@ pytest -m live
 
 ## Docker
 
+Use Docker if you want to run the dashboard without installing Python 3.13 locally.
+
 Build:
 
 ```bash
@@ -127,6 +137,12 @@ Supported application overrides:
 | `BM_MOEX_DELAY` | Expected MOEX publication lag in days. Allowed range: `1-14`. | `2` |
 | `BM_SENTRY_TRACE_SAMPLE_RATE` | Optional Sentry trace sampling rate. Allowed range: `0.0-1.0`. | `0.1` |
 | `PORT` | Streamlit server port in Docker/server mode | `8501` |
+
+## Operational Notes
+
+- The app depends on Yahoo Finance and MOEX ISS at runtime. If either provider is rate-limited, unavailable, or blocked by the user's network, the dashboard renders an unavailable state instead of unsafe calculations.
+- Live-provider tests are intentionally opt-in because they depend on network access and upstream availability.
+- Market-cap and CPI values are curated snapshots, not live data. They are suitable for reproducible presentation context, but should be refreshed before publishing claims about current valuation or inflation-adjusted performance.
 
 ## Manual Diagnostics
 
