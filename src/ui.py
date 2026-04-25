@@ -183,6 +183,12 @@ def get_custom_css() -> str:
         /* Hide Streamlit branding */
         #MainMenu {{visibility: hidden;}}
         footer {{visibility: hidden;}}
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"] {{
+            display: none !important;
+            visibility: hidden !important;
+        }}
         
         /* Selectbox styling */
         .stSelectbox label {{

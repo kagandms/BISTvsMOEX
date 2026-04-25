@@ -223,7 +223,7 @@ def render_current_metrics(series_pair: SeriesPair, sector_data: dict[str, str],
                 decimals=2,
                 prefix=series_pair.tr_currency,
             ),
-            tr_change,
+            None,
         )
 
     with col2:
@@ -249,7 +249,7 @@ def render_current_metrics(series_pair: SeriesPair, sector_data: dict[str, str],
                 decimals=2,
                 prefix=series_pair.ru_currency,
             ),
-            ru_change,
+            None,
         )
 
     with col4:
